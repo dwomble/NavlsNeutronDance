@@ -6,7 +6,7 @@ import zipfile
 from .context import Context
 
 
-class SpanshUpdater():
+class Updater():
     def __init__(self, version, plugin_dir):
         self.version = version
         self.zip_name = "EDMC-SpanshRouterRE-" + version + ".zip"
@@ -28,10 +28,12 @@ class SpanshUpdater():
                 Context.logger.info("Downloading SpanshRouterRE to " + self.zip_path)
                 f.write(os.path.join(r.content))
             self.zip_downloaded = True
-        finally:
-            return self.zip_downloaded
+
+        return self.zip_downloaded
 
     def install(self):
+        return
+
         if not self.download_zip():
             return
         try:
