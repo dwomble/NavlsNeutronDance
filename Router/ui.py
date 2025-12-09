@@ -174,7 +174,7 @@ class UI():
         self.source_ac.grid(row=row, column=col, columnspan=2)
         col += 2
 
-        self.range_entry:Placeholder = Placeholder(plot_fr, Context.router.range, width=10)
+        self.range_entry:Placeholder = Placeholder(plot_fr, round(Context.router.range, 2), width=10)
         self.range_entry.grid(row=row, column=col)
         ToolTip(self.range_entry, lbls["range_tooltip"])
         # Check if we're having a valid range on the fly

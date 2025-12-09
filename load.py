@@ -54,6 +54,17 @@ def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: di
             Context.system = sys
             Context.router.update_route()
 
+        case 'StoredShips':
+            for ship in entry.get('ShipsHere', []) + entry.get('ShipsRemote', []):
+                Context.router.update_ships(ship.get('ShipID', ''), ship.get('MaxJumpRange', 0.0))
+
+        case 'Loadout':
+            Context.router.update_ships(entry.get('ShipID', ''), entry.get('MaxJumpRange', 0.0))
+            Context.router.ship = entry.get('ShipID', '')
+            Context.router.range = entry.get('MaxJumpRange', 0.0) * 0.95
+            Context.router.save()
+
+
 
 def ask_for_update() -> None:
     if Context.router.update_available:

@@ -42,6 +42,7 @@ class Router():
         self.bodies:str = ""
 
         self.system:str = ""
+        self.ship:str = ''
         self.range:float = 32.0
         self.efficiency:int = 60
         self.supercharge_mult:int = 4
@@ -53,7 +54,15 @@ class Router():
         self._initialized = True
 
 
-    def copy_waypoint(self):
+    def update_ships(self, ship_id:str, max_jump_range:float) -> None:
+        if ship_id == '': return
+
+        self.ships[ship_id] = round(max_jump_range * 0.95, 2)
+        Debug.logger.debug(f"Updated ship {ship_id} with max jump range {max_jump_range * 0.95} LY")
+        self.save()
+
+
+    def copy_waypoint(self) -> None:
         if sys.platform == "linux" or sys.platform == "linux2":
             command = subprocess.Popen(["echo", "-n", self.next_stop], stdout=subprocess.PIPE)
             subprocess.Popen(["xclip", "-selection", "c"], stdin=command.stdout)

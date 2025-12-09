@@ -3,18 +3,9 @@
     "range": 32.0,
     "efficiency": 60,
     "supercharge_mult": 4,
-    "offset": 1,
-    "jumps_left": 4,
+    "offset": 0,
+    "jumps_left": 0,
     "next_stop": "Col 285 Sector AA-A a30-3",
-    "route": [
-        [
-            "Sol",
-            "0"
-        ],
-        [
-            "Col 285 Sector AA-A a30-3",
-            "4"
-        ]
-    ],
+    "route": [],
     "ships": {}
 }
