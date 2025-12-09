@@ -2,6 +2,7 @@ import ast
 import csv
 import json
 import os
+from os import path
 import re
 import requests
 from requests import Response
@@ -15,8 +16,9 @@ from time import sleep
 from typing import TYPE_CHECKING
 
 from .strings import hdrs, lbls
-from .context import Context, Debug
+from .context import Context, Debug, catch_exceptions
 
+DATA_DIR = 'data'
 
 class Router():
     # Singleton pattern
@@ -36,59 +38,19 @@ class Router():
         self.roadtoriches:bool = False
         self.fleetcarrier:bool = False
         self.route:list = []
+        self.ships:dict = {}
         self.bodies:str = ""
 
+        self.system:str = ""
+        self.range:float = 32.0
+        self.efficiency:int = 60
+        self.supercharge_mult:int = 4
         self.offset:int = 0
         self.jumps_left:int = 0
         self.next_stop:str = ""
 
+        self._load()
         self._initialized = True
-
-
-    def open_last_route(self) -> None:
-        save_route_path:Path = Context.plugin_dir / 'route.csv'
-        offset_file_path:Path = Context.plugin_dir / 'offset'
-
-        try:
-            has_headers = False
-            with open(save_route_path, 'r', newline='') as csvfile:
-                # Check if the file has a header for compatibility with previous versions
-                dict_route_reader = csv.DictReader(csvfile)
-                if dict_route_reader.fieldnames and dict_route_reader.fieldnames[0] == hdrs["system_name"]:
-                    has_headers = True
-
-            if has_headers:
-                self.plot_csv(save_route_path, clear_previous_route=False)
-            else:
-                with open(save_route_path, 'r', newline='') as csvfile:
-                    route_reader = csv.reader(csvfile)
-
-                    for row in route_reader:
-                        if row not in (None, "", []):
-                            self.route.append(row)
-
-            try:
-                with open(offset_file_path, 'r') as offset_fh:
-                    self.offset = int(offset_fh.readline())
-
-            except Exception:
-                self.offset = 0
-
-            self.jumps_left = 0
-            for row in self.route[self.offset:]:
-                if row[1] not in [None, "", []]:
-                    self.jumps_left += int(row[1])
-
-            self.next_stop = self.route[self.offset][0]
-            self.update_bodies_text()
-            self.copy_waypoint()
-
-            Context.ui.update_display()
-
-        except IOError:
-            Debug.logger.debug("No previously saved route.")
-        except Exception as e:
-            Debug.logger.error("Failed to open last route, exception info:", exc_info=e)
 
 
     def copy_waypoint(self):
@@ -131,7 +93,7 @@ class Router():
 
             Context.ui.update_display()
             self.copy_waypoint()
-        self.save_offset()
+        self.save()
 
 
     def goto_changelog_page(self) -> None:
@@ -166,7 +128,7 @@ class Router():
                     self.update_bodies_text()
                     self.copy_waypoint()
                     Context.ui.update_display()
-                    self.save_all_route()
+                    self.save()
                 else:
                     Context.ui.set_error("Unsupported file type")
             except Exception as e:
@@ -288,21 +250,19 @@ class Router():
                 Context.ui.set_error("Could not detect file format")
 
 
-    def plot_route(self, source:str, dest:str, efficiency:int, range:float) -> None:
+    def plot_route(self, source:str, dest:str, efficiency:int, range:float, supercharge_mult:int = 4) -> bool:
         Debug.logger.debug(f"Plotting route")
-        Context.ui.hide_error()
 
         try:
-            Context.ui.enable_plot_gui(False)
             job_url = "https://spansh.co.uk/api/route?"
 
             results:Response = requests.post(job_url,
-                params={"efficiency": efficiency, "range": range, "from": source, "to": dest },
+                params={"efficiency": efficiency, "range": range, "from": source, "to": dest, 'supercharge_multiplier': supercharge_mult},
                 headers={'User-Agent': Context.plugin_useragent})
 
             if results.status_code != 202:
                 self.plot_error(results)
-                return
+                return False
 
             tries = 0
             while tries < 20:
@@ -318,12 +278,11 @@ class Router():
 
             if not route_response:
                 Debug.logger.error("Query to Spansh timed out")
-                Context.ui.enable_plot_gui(True)
                 Context.ui.set_error("The query to Spansh was too long and timed out, please try again.")
 
             if route_response.status_code != 200:
                 self.plot_error(route_response)
-                return
+                return False
 
             route:dict = json.loads(route_response.content)["result"]["system_jumps"]
             self.clear_route()
@@ -331,17 +290,18 @@ class Router():
                 self.route.append([waypoint["system"], str(waypoint["jumps"])])
                 self.jumps_left += waypoint["jumps"]
 
-            Context.ui.show_frame('Route')
             self.offset = 1 if self.route[0][0] == Context.system else 0
             self.next_stop = self.route[self.offset][0]
             self.copy_waypoint()
-            Context.ui.update_display()
-            self.save_all_route()
+            self.save()
+            return True
+
         except Exception as e:
             Debug.logger.error("Failed to plot route, exception info:", exc_info=e)
             Context.ui.enable_plot_gui(True)
             Context.ui.set_error(lbls["plot_error"])
         Debug.logger.debug(f"Done")
+        return False
 
 
     def plot_error(self, response:Response) -> None:
@@ -417,24 +377,8 @@ class Router():
         self.roadtoriches = False
         self.fleetcarrier = False
 
-        save_route_path:Path = Context.plugin_dir / 'route.csv'
-        offset_file_path:Path = Context.plugin_dir / 'offset'
-
-        try:
-            os.remove(save_route_path)
-        except Exception:
-            Debug.logger.debug("No route to delete")
-        try:
-            os.remove(offset_file_path)
-        except Exception:
-            Debug.logger.debug("No offset file to delete")
-
         Context.ui.update_display()
-
-
-    def save_all_route(self) -> None:
-        self.save_route()
-        self.save_offset()
+        self.save()
 
 
     def save_route(self) -> None:
@@ -469,19 +413,6 @@ class Router():
                 os.remove(save_route_path)
             except Exception:
                 Debug.logger.debug("No route to delete")
-
-
-    def save_offset(self) -> None:
-        offset_file_path:Path = Context.plugin_dir / 'offset'
-
-        if len(self.route) != 0:
-            with open(offset_file_path, 'w') as offset_fh:
-                offset_fh.write(str(self.offset))
-        else:
-            try:
-                os.remove(offset_file_path)
-            except Exception:
-                Debug.logger.debug("No offset to delete")
 
 
     def update_bodies_text(self) -> None:
@@ -551,3 +482,50 @@ class Router():
     def install_update(self) -> None:
         return
         self.spansh_updater.install()
+
+    @catch_exceptions
+    def _load(self) -> None:
+        ''' Load state from file '''
+        file:str = path.join(Context.plugin_dir, DATA_DIR, 'route.json')
+        if path.exists(file):
+            with open(file) as json_file:
+                self._from_dict(json.load(json_file))
+
+
+    @catch_exceptions
+    def save(self) -> None:
+        ''' Save state to file '''
+
+        ind:int = 4
+        file:str = path.join(Context.plugin_dir, DATA_DIR, 'route.json')
+        with open(file, 'w') as outfile:
+            json.dump(self._as_dict(), outfile, indent=ind)
+
+
+    def _as_dict(self) -> dict:
+        ''' Return a Dictionary representation of our data, suitable for serializing '''
+
+        return {
+            'system': self.system,
+            'range': self.range,
+            'efficiency': self.efficiency,
+            'supercharge_mult': self.supercharge_mult,
+            'offset': self.offset,
+            'jumps_left': self.jumps_left,
+            'next_stop': self.next_stop,
+            'route': self.route,
+            'ships': self.ships
+            }
+
+
+    def _from_dict(self, dict:dict) -> None:
+        ''' Populate our data from a Dictionary that has been deserialized '''
+        self.system = dict.get('system', '')
+        self.range = dict.get('range', 32.0)
+        self.efficiency = dict.get('efficiency', 60)
+        self.supercharge_mult = dict.get('supercharge_mult', 4)
+        self.offset = dict.get('offset', 0)
+        self.jumps_left = dict.get('jumps_left', 0)
+        self.next_stop = dict.get('next_stop', "")
+        self.route = dict.get('route', [])
+        self.ships = dict.get('ships', {})

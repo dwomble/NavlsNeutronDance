@@ -11,11 +11,12 @@ from Router.context import Context, Debug
 from Router.router import Router
 from Router.ui import UI
 
-NAME="SpanshRouterRedux"
+NAME="Navl's Neutron Dance"
 
 def plugin_start3(plugin_dir: str) -> str:
     # Debug Class
     Debug(plugin_dir)
+    Context.plugin_name = NAME
     Context.plugin_dir = Path(plugin_dir).resolve()
     version_file = Context.plugin_dir / "version"
     Context.plugin_version = Version(version_file.read_text())
@@ -23,6 +24,7 @@ def plugin_start3(plugin_dir: str) -> str:
     Context.router = Router()
     Context.router.check_for_update()
     return NAME
+
 
 def plugin_start(plugin_dir: str) -> None:
     """EDMC calls this function when running in Python 2 mode."""
@@ -43,7 +45,7 @@ def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: di
     match entry['event']:
         case 'FSDJump' | 'Location' | 'SupercruiseEntry' | 'SupercruiseExit':
             Debug.logger.debug(f"Current system changed: {Context.system} -> {sys}")
-            Context.system = sys
+            Context.router.system = sys
             Context.router.update_route()
             Context.ui.set_source_ac(sys)
 
@@ -70,7 +72,6 @@ def ask_for_update() -> None:
 def plugin_app(parent:tk.Widget) -> tk.Frame:
     Context.router = Router()
     Context.ui = UI(parent)
-    Context.router.open_last_route()
 
     Debug.logger.debug(f"Parent: [{parent}] [{Context.ui}] [{Context.ui.parent}]")
     parent.master.after_idle(ask_for_update)

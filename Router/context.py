@@ -25,7 +25,7 @@ class Context:
     plugin_useragent:str = None
 
     # game state
-    system:str|None = None
+    system:str = ''
 
     # global objects
     logger:logging.Logger = logging.getLogger(f'{appname}.{plugin_name}')

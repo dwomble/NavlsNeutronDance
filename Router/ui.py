@@ -36,13 +36,20 @@ class UI():
         self.parent:tk.Widget|None = parent
         self.frame:tk.Frame = tk.Frame(parent, borderwidth=2)
         self.frame.pack(fill=tk.BOTH, expand=True)
+        self.title_fr = None
         self.route_fr = None
         self.plot_fr = None
 
         Debug.logger.debug(f"Creating Frame")
 
-        self.plot_gui_btn = ttk.Button(self.frame, text=" "+btns["plot_route"]+" ", command=lambda: self.show_frame('Plot'))
-        self.plot_gui_btn.grid(row=0, column=0)
+        self.title_fr = tk.Frame(self.frame)
+        self.title_fr.grid(row=0, column=0)
+        col:int = 0; row:int = 0
+        self.lbl = ttk.Label(self.title_fr, text=lbls["plot_title"], font=("Helvetica", 9, "bold"))
+        self.lbl.grid(row=row, column=col, padx=5, pady=5)
+        col += 1
+        self.plot_gui_btn = ttk.Button(self.title_fr, text=" "+btns["plot_route"]+" ", command=lambda: self.show_frame('Plot'))
+        self.plot_gui_btn.grid(row=row, column=col)
 
         self.route_fr = self._create_route_fr(self.frame)
         self.plot_fr = self._create_plot_fr(self.frame)
@@ -54,7 +61,7 @@ class UI():
 
 
     @catch_exceptions
-    def update_display(self, show:bool = True):
+    def update_display(self, show:bool = True) -> None:
         """ Update the display UI """
 
         self.hide_error()
@@ -94,7 +101,7 @@ class UI():
 
 
     def _clear_route(self) -> None:
-        clear = confirmDialog.askyesno(
+        clear: bool = confirmDialog.askyesno(
             "SpanshRouterRE",
             "Are you sure you want to clear the current route?"
         )
@@ -141,16 +148,15 @@ class UI():
         self.fleetrestock_lbl = ttk.Label(fr2, justify=tk.LEFT, text=lbls["restock_tritium"])
         self.fleetrestock_lbl.grid(row=row, column=col, padx=5, pady=5)
 
-        row += 1
-        col = 0
-        self.export_route_btn = ttk.Button(fr2, text=btns["export_route"], command=lambda: Context.router.export_route)
-        self.export_route_btn.grid(row=row, column=col)
+        #row += 1
+        #col = 0
+        #self.export_route_btn = ttk.Button(fr2, text=btns["export_route"], command=lambda: Context.router.export_route())
+        #self.export_route_btn.grid(row=row, column=col)
         col += 1
         self.clear_route_btn = ttk.Button(fr2, text=btns["clear_route"], command=lambda: self._clear_route())
         self.clear_route_btn.grid(row=row, column=col)
 
-        row += 1
-        col = 0
+        row += 1; col = 0
         self.error_lbl = ttk.Label(fr2, textvariable=self.error_txt)
         self.error_lbl.grid(row=row, column=col, padx=5, pady=5)
 
@@ -164,36 +170,47 @@ class UI():
         row:int = 0
         col:int = 0
 
-        self.source_ac = Autocompleter(plot_fr, lbls["source_system"], width=30)
+        self.source_ac = Autocompleter(plot_fr, Context.router.system if Context.router.system != '' else lbls["source_system"], width=30)
         self.source_ac.grid(row=row, column=col, columnspan=2)
         col += 2
 
-        self.range_entry:Placeholder = Placeholder(plot_fr, lbls["range"], width=10)
+        self.range_entry:Placeholder = Placeholder(plot_fr, Context.router.range, width=10)
         self.range_entry.grid(row=row, column=col)
+        ToolTip(self.range_entry, lbls["range_tooltip"])
         # Check if we're having a valid range on the fly
         self.range_entry.var.trace_add('write', self.check_range)
 
-        row += 1
-        col = 0
+        row += 1; col = 0
         self.dest_ac = Autocompleter(plot_fr, lbls["dest_system"], width=30)
         self.dest_ac.grid(row=row, column=col, columnspan=2)
         col += 2
 
-        self.efficiency_slider = tk.Scale(plot_fr, from_=1, to=100, orient=tk.HORIZONTAL, label=lbls["efficiency"])
+        self.efficiency_slider = tk.Scale(plot_fr, from_=1, to=100, orient=tk.HORIZONTAL)
+        ToolTip(self.efficiency_slider, lbls["efficiency_tooltip"])
         self.efficiency_slider.grid(row=row, column=col)
-        self.efficiency_slider.set(60)
+        self.efficiency_slider.set(Context.router.efficiency)
 
-        row += 1
-        col = 0
+        row += 1; col = 0
+        self.multiplier = tk.IntVar() # Or StringVar() for string values
+        self.multiplier.set(Context.router.supercharge_mult)  # Set default value
+
+        # Create radio buttons
+        l1 = ttk.Label(plot_fr, text=lbls["supercharge_label"])
+        l1.grid(row=row, column=col, padx=5, pady=5)
+        col += 1
+        r1 = tk.Radiobutton(plot_fr, text=lbls["standard_supercharge"], variable=self.multiplier, value=4)
+        r1.grid(row=row, column=col)
+        col += 1
+        r2 = tk.Radiobutton(plot_fr, text=lbls["overcharge_supercharge"], variable=self.multiplier, value=6)
+        r2.grid(row=row, column=col)
+
+        row += 1; col = 0
         self.plot_route_btn = ttk.Button(plot_fr, text=btns["calculate_route"], command=lambda: self.plot_route())
         self.plot_route_btn.grid(row=row, column=col)
         col += 1
 
-
         self.cancel_plot = ttk.Button(plot_fr, text=btns["cancel"], command=lambda: self.show_frame('None'))
         self.cancel_plot.grid(row=row, column=col)
-        col += 1
-
         return plot_fr
 
 
@@ -203,27 +220,29 @@ class UI():
         Debug.logger.debug(f"Show_frame {which}")
         match which:
             case 'Route':
-                self.route_fr.grid(row=1, column=0)
+                self.route_fr.grid()
                 self.plot_fr.grid_forget()
-                self.plot_gui_btn.forget()
+                self.title_fr.grid_forget()
             case 'Plot':
                 self.route_fr.grid_forget()
-                self.plot_fr.grid(row=1, column=0)
-                self.plot_gui_btn.forget()
+                self.plot_fr.grid()
+                self.title_fr.grid_forget()
             case _:
                 self.plot_fr.grid_forget()
                 self.route_fr.grid_forget()
-                self.plot_gui_btn.grid(row=1, column=0)
+                self.title_fr.grid()
         return 'Ok'
+
 
     @catch_exceptions
     def plot_route(self) -> None:
         Debug.logger.debug(f"UI plotting route")
+        self.hide_error()
 
         src:str = self.source_ac.get().strip()
         dest:str = self.dest_ac.get().strip()
         eff:int = int(self.efficiency_slider.get())
-
+        supercharge_mult:int = self.multiplier.get()
         # Hide autocomplete lists in case they're still shown
         if src == '' or dest == '' or dest == self.dest_ac.placeholder:
             Debug.logger.debug(f"src {src} dest {dest} {self.dest_ac.placeholder}")
@@ -232,13 +251,14 @@ class UI():
         try:
             range = float(self.range_entry.get())
         except ValueError:
-            Context.ui.set_error("Invalid range")
+            self.set_error("Invalid range")
             return
 
         self.source_ac.hide_list()
         self.dest_ac.hide_list()
-        Context.router.plot_route(src, dest, eff, range)
-        return
+        res:bool = Context.router.plot_route(src, dest, eff, range, supercharge_mult)
+        self.show_frame('Route' if res == True else 'Plot')
+        self.update_display()
 
 
     def set_error(self, text:str) -> None:
@@ -257,7 +277,7 @@ class UI():
         self.error_lbl.grid_remove()
 
 
-    def enable_plot_gui(self, enable:bool):
+    def enable_plot_gui(self, enable:bool) -> None:
         for elem in [self.source_ac, self.dest_ac, self.efficiency_slider, self.range_entry, self.plot_route_btn, self.cancel_plot]:
             elem.config(state=tk.NORMAL if enable == True else tk.DISABLED)
             elem.update_idletasks()
