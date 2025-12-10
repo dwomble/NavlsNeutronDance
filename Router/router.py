@@ -19,7 +19,13 @@ from .strings import hdrs, lbls
 from .context import Context, Debug, catch_exceptions
 
 DATA_DIR = 'data'
-
+# Map from returned data to our header names
+HDRMAP:dict = {"System Name": "system", "Distance Jumped": "distance_jumped", "Distance Remaining": "distance_left",
+               "Jumps": "jumps", "Neutron Star": "neutron_star"}
+# Headers that we accept
+HEADERS:list = ["System Name", "Jumps", "Neutron Star", "Body Name", "Body Subtype",
+                "Is Terraformable", "Distance To Arrival", "Estimated Scan Value", "Estimated Mapping Value",
+                "Distance", "Distance Jumped", "Distance Remaining", "Fuel Used", "Icy Ring", "Pristine", "Restock Tritium"]
 class Router():
     # Singleton pattern
     _instance = None
@@ -37,11 +43,13 @@ class Router():
         self.update_available:bool = False
         self.roadtoriches:bool = False
         self.fleetcarrier:bool = False
+        self.headers:list = []
         self.route:list = []
         self.ships:dict = {}
         self.bodies:str = ""
 
-        self.system:str = ""
+        self.src:str = ""
+        self.dest:str = ""
         self.ship:str = ''
         self.range:float = 32.0
         self.efficiency:int = 60
@@ -83,26 +91,47 @@ class Router():
             self.update_route(-1)
 
 
-    def update_route(self, direction:int = 1) -> None:
-        if direction > 0:
-            if self.route[self.offset][1] not in [None, "", []]:
-                self.jumps_left -= int(self.route[self.offset][1])
-            self.offset += 1
-        else:
-            self.offset -= 1
-            if self.route[self.offset][1] not in [None, "", []]:
-                self.jumps_left += int(self.route[self.offset][1])
+    def _syscol(self, which:str = '') -> int:
+        """ Figure out which column has a chosen key """
+        if which == '':
+            for h in ['System Name', 'system']:
+                if h in self.headers:
+                    which = h
+                    break
+        if which == '' or which not in self.headers:
+            return 0
 
-        if self.offset >= len(self.route):
-            self.next_stop = "End of the road!"
-            Context.ui.update_display()
-        else:
-            self.next_stop = self.route[self.offset][0]
-            self.update_bodies_text()
+        return self.headers.index(which)
 
+
+    def update_route(self, direction:int = 0) -> None:
+        """ Step forwards or backwards through the route """
+        c:int = self._syscol()
+
+        if direction == 0: # Figure out if we're on the route
+            for r in self.route:
+                if self.route[direction][c] == Context.system:
+                    self.offset = direction
+                    direction = 0
+                    break
+            direction += 1
+
+            # We aren't on the route so just return
+            if self.route[self.offset][c] != Context.system:
+                Debug.logger.debug(f"We aren't on the route")
+                return
+
+        if self.offset + direction < 0 or self.offset + direction >= len(self.route):
+            if direction > 0:
+                self.next_stop = "End of the road!"
             Context.ui.update_display()
-            self.copy_waypoint()
-        self.save()
+            return
+
+        self.offset += direction
+        self.next_stop = self.route[self.offset][c]
+
+        Context.ui.update_display()
+        self.copy_waypoint()
 
 
     def goto_changelog_page(self) -> None:
@@ -112,7 +141,9 @@ class Router():
         webbrowser.open(changelog_url)
 
 
-    def plot_file(self) -> None:
+    @catch_exceptions
+    def import_csv(self, filepath:Path|str, clear_previous_route:bool = True):
+        """ Import a csv file """
         ftypes = [
             ('All supported files', '*.csv *.txt'),
             ('CSV files', '*.csv'),
@@ -120,33 +151,10 @@ class Router():
         ]
         filename:str = filedialog.askopenfilename(filetypes=ftypes, initialdir=os.path.expanduser('~'))
 
-        if len(filename) > 0:
-            try:
-                ftype_supported = False
-                if filename.endswith(".csv"):
-                    ftype_supported = True
-                    self.plot_csv(filename)
+        if len(filename) == 0:
+            Debug.logger.debug(f"No filename selected")
+            return
 
-                elif filename.endswith(".txt"):
-                    ftype_supported = True
-                    self.plot_edts(filename)
-
-                if ftype_supported:
-                    self.offset = 0
-                    self.next_stop = self.route[0][0]
-                    self.update_bodies_text()
-                    self.copy_waypoint()
-                    Context.ui.update_display()
-                    self.save()
-                else:
-                    Context.ui.set_error("Unsupported file type")
-            except Exception as e:
-                Debug.logger.error("Failed to read user file, exception info:", exc_info=e)
-                Context.ui.update_display(True)
-                Context.ui.set_error("An error occured while reading the file.")
-
-
-    def plot_csv(self, filepath: Path | str, clear_previous_route: bool = True):
         with open(filepath, 'r', encoding='utf-8-sig', newline='') as csvfile:
             self.roadtoriches = False
             self.fleetcarrier = False
@@ -155,108 +163,34 @@ class Router():
                 self.clear_route()
 
             route_reader = csv.DictReader(csvfile)
-
-            # Get column header names as string
+            # Check it has column headings
             if not route_reader.fieldnames:
-                Debug.logger.error(f"File {filepath} is empty or of unsupported format")
+                Debug.logger.error(f"File {filepath} is empty or does't have a header row")
                 return
-            headerline:str = ','.join(route_reader.fieldnames)
 
-            # Define the differnt internal formats based on the CSV header row
-            internalbasicheader1 = "System Name"
-            internalbasicheader2 = "System Name,Jumps"
-            internalrichesheader = "System Name,Jumps,Body Name,Body Subtype"
-            internalfleetcarrierheader = "System Name,Jumps,Restock Tritium"
-            # Define the differnt import file formats based on the CSV header row
-            neutronimportheader = "System Name,Distance To Arrival,Distance Remaining,Neutron Star,Jumps"
-            road2richesimportheader = "System Name,Body Name,Body Subtype,Is Terraformable,Distance To Arrival,Estimated Scan Value,Estimated Mapping Value,Jumps"  # noqa: E501
-            fleetcarrierimportheader = "System Name,Distance,Distance Remaining,Fuel Used,Icy Ring,Pristine,Restock Tritium"
+            hdrs:list = list(set(HEADERS).intersection(set(route_reader.fieldnames)))
+            if hdrs == [] or "System Name" not in hdrs:
+                Debug.logger.error(f"File {filepath} is of unsupported format")
+                return
 
-            if (headerline == internalbasicheader1) or (headerline == internalbasicheader2) or (headerline == neutronimportheader):
-                for row in route_reader:
-                    if row not in (None, "", []):
-                        self.route.append([
-                            row[hdrs["system_name"]],
-                            row.get(hdrs["jumps"], "")  # Jumps column is optional
-                        ])
-                        if row.get(hdrs["jumps"]):  # Jumps column is optional
-                            self.jumps_left += int(row[hdrs["jumps"]])
+            route:list = []
+            for row in route_reader:
+                r:list = []
+                if row not in (None, "", []): continue
+                for col in hdrs:
+                    if col in row:
+                        if col in ["body_name", "body_subtype"]:
+                            r.append(ast.literal_eval(row[col]))
+                            continue
+                        r.append(round(row[col], 2) if re.match(r"\d+.\d+", row[col]) else row[col])
+                route.append(r)
 
-            elif headerline == internalrichesheader:
-                self.roadtoriches = True
-
-                for row in route_reader:
-                    if row not in (None, "", []):
-                        # Convert string representations of lists to actual Lists
-                        bodynames = ast.literal_eval(row[hdrs["body_name"]])
-                        bodysubtypes = ast.literal_eval(row[hdrs["body_subtype"]])
-
-                        self.route.append([
-                            row[hdrs["system_name"]],
-                            row[hdrs["jumps"]],
-                            bodynames,
-                            bodysubtypes
-                        ])
-                        self.jumps_left += int(row[hdrs["jumps"]])
-
-            elif headerline == internalfleetcarrierheader:
-                self.fleetcarrier = True
-
-                for row in route_reader:
-                    if row not in (None, "", []):
-                        self.route.append([
-                            row[hdrs["system_name"]],
-                            row[hdrs["jumps"]],
-                            row[hdrs["restock_tritium"]]
-                        ])
-                        self.jumps_left += int(row[hdrs["jumps"]])
-
-            elif headerline == road2richesimportheader:
-                self.roadtoriches = True
-
-                bodynames:list = []
-                bodysubtypes:list = []
-
-                for row in route_reader:
-                    bodyname:str = row[hdrs["body_name"]]
-                    bodysubtype:str = row[hdrs["body_subtype"]]
-
-                    # Update the current system with additional bodies from new CSV row
-                    if len(self.route) > 0 and row[hdrs["system_name"]] == self.route[-1][0]:
-                        self.route[-1][2].append(bodyname)
-                        self.route[-1][3].append(bodysubtype)
-                        continue
-
-                    if row not in (None, "", []):
-                        bodynames.append(bodyname)
-                        bodysubtypes.append(bodysubtype)
-
-                        self.route.append([
-                            row[hdrs["system_name"]],
-                            row[hdrs["jumps"]],
-                            bodynames.copy(),
-                            bodysubtypes.copy()
-                        ])
-                        # Clear bodies for next system
-                        bodynames.clear()
-                        bodysubtypes.clear()
-
-                        self.jumps_left += int(row[hdrs["jumps"]])
-
-            elif headerline == fleetcarrierimportheader:
-                self.fleetcarrier = True
-
-                for row in route_reader:
-                    if row not in (None, "", []):
-                        self.route.append([
-                            row[hdrs["system_name"]],
-                            1,  # Jumps is faked as every row is 1 jump
-                            row[hdrs["restock_tritium"]]
-                        ])
-                        self.jumps_left += 1    # Jumps is faked as every row is 1 jump
-
-            else:
-                Context.ui.set_error("Could not detect file format")
+            self.fleetcarrier = True if "Fuel Used" in hdrs else False
+            self.roadtoriches = True if "Estimated Scan Value" in hdrs else False
+            Debug.logger.debug(f"Headers: {hdrs} rows {len(route)}")
+            self.headers = hdrs
+            self.route = route
+            self.save()
 
 
     def plot_route(self, source:str, dest:str, efficiency:int, range:float, supercharge_mult:int = 4) -> bool:
@@ -294,13 +228,34 @@ class Router():
                 return False
 
             route:dict = json.loads(route_response.content)["result"]["system_jumps"]
-            self.clear_route()
-            for waypoint in route:
-                self.route.append([waypoint["system"], str(waypoint["jumps"])])
-                self.jumps_left += waypoint["jumps"]
 
-            self.offset = 1 if self.route[0][0] == Context.system else 0
-            self.next_stop = self.route[self.offset][0]
+            clist:list = list(route[0].keys())
+            cols:list = []
+            hdrs:list = []
+            for h in HEADERS:
+                if HDRMAP.get(h, '') in route[0].keys():
+                    hdrs.append(h)
+                    cols.append(HDRMAP.get(h, ''))
+
+            Debug.logger.debug(f"Cols: {cols} hdrs: {hdrs}")
+            rte:list = []
+            for waypoint in route:
+                r:list = []
+                for c in cols:
+                    r.append(waypoint[c])
+                rte.append(r)
+
+            self.clear_route()
+            self.headers = hdrs
+            self.route = rte
+            self.src = source
+            self.dest = dest
+            self.supercharge_mult = supercharge_mult
+            self.efficiency = efficiency
+            self.range = range
+            self.offset = 1 if self.route[0][self._syscol()] == Context.system else 0
+            self.jumps_left = sum([j[cols.index('jumps')] for j in self.route]) if 'Jumps' in hdrs else 0
+            self.next_stop = self.route[self.offset][self._syscol()]
             self.copy_waypoint()
             self.save()
             return True
@@ -355,33 +310,11 @@ class Router():
             Context.ui.set_error("An error occured while reading the file.")
 
 
-    def export_route(self) -> None:
-        if len(self.route) == 0:
-            Debug.logger.debug("No route to export")
-            return
-
-        route_start:str = self.route[0][0]
-        route_end:str = self.route[-1][0]
-        route_name:str = f"{route_start} to {route_end}"
-        Debug.logger.debug(f"Exporting route: {route_name}")
-
-        ftypes:list = [('TCE Flight Plan files', '*.exp')]
-        filename:str = filedialog.asksaveasfilename(filetypes=ftypes, initialdir=os.path.expanduser('~'), initialfile=f"{route_name}.exp")
-
-        if len(filename) > 0:
-            try:
-                with open(filename, 'w') as csvfile:
-                    for row in self.route:
-                        csvfile.write(f"{route_name},{row[0]}\n")
-            except Exception as e:
-                Debug.logger.error("Failed to write route to the file, exception info:", exc_info=e)
-                Context.ui.set_error("An error occured while writing the file.")
-
-
     def clear_route(self) -> None:
         self.offset = 0
+        self.headers = []
         self.route = []
-        self.next_waypoint:str = ""
+        self.next_stop:str = ""
         self.jumps_left = 0
         self.roadtoriches = False
         self.fleetcarrier = False
@@ -390,38 +323,28 @@ class Router():
         self.save()
 
 
-    def save_route(self) -> None:
-        save_route_path:Path = Context.plugin_dir / 'route.csv'
+    def export_route(self) -> None:
+        """ Export the route as a csv """
 
-        if len(self.route) != 0:
-            with open(save_route_path, 'w', newline='') as csvfile:
-                if self.roadtoriches:
-                    # Write output: System, Jumps, Bodies[], BodySubTypes[]
-                    fieldnames:list = [hdrs["system_name"], hdrs["jumps"], hdrs["body_name"], hdrs["body_subtype"]]
-                    writer = csv.writer(csvfile)
-                    writer.writerow(fieldnames)
-                    for row in self.route:
-                        writer.writerow(row)
+        if self.route == [] or self.headers == []:
+            Debug.logger.debug(f"No route")
+            return
 
-                if self.fleetcarrier:
-                    # Write output: System, Jumps,
-                    fieldnames = [hdrs["system_name"], hdrs["jumps"], hdrs["restock_tritium"]]
-                    writer = csv.writer(csvfile)
-                    writer.writerow(fieldnames)
-                    for row in self.route:
-                        writer.writerow(row)
+        route_start:str = self.route[0][0]
+        route_end:str = self.route[-1][0]
+        route_name:str = f"{route_start} to {route_end}"
+        ftypes:list = [('CSV files', '*.csv')]
+        filename:str = filedialog.asksaveasfilename(filetypes=ftypes, initialdir=os.path.expanduser('~'), initialfile=f"{route_name}.csv")
 
-                else:
-                    # Write output: System, Jumps
-                    fieldnames = [hdrs["system_name"], hdrs["jumps"]]
-                    writer = csv.writer(csvfile)
-                    writer.writerow(fieldnames)
-                    writer.writerows(self.route)
-        else:
-            try:
-                os.remove(save_route_path)
-            except Exception:
-                Debug.logger.debug("No route to delete")
+        if len(filename) == 0:
+            Debug.logger.debug(f"No filename selected")
+            return
+
+        with open(filename, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(self.headers)
+            for row in self.route:
+                writer.writerow(row)
 
 
     def update_bodies_text(self) -> None:
@@ -492,6 +415,7 @@ class Router():
         return
         self.spansh_updater.install()
 
+
     @catch_exceptions
     def _load(self) -> None:
         ''' Load state from file '''
@@ -515,13 +439,15 @@ class Router():
         ''' Return a Dictionary representation of our data, suitable for serializing '''
 
         return {
-            'system': self.system,
+            'source': self.src,
+            'destination': self.dest,
             'range': self.range,
             'efficiency': self.efficiency,
             'supercharge_mult': self.supercharge_mult,
             'offset': self.offset,
             'jumps_left': self.jumps_left,
             'next_stop': self.next_stop,
+            'headers': self.headers,
             'route': self.route,
             'ships': self.ships
             }
@@ -529,12 +455,14 @@ class Router():
 
     def _from_dict(self, dict:dict) -> None:
         ''' Populate our data from a Dictionary that has been deserialized '''
-        self.system = dict.get('system', '')
+        self.src = dict.get('source', '')
+        self.dest = dict.get('destination', '')
         self.range = dict.get('range', 32.0)
         self.efficiency = dict.get('efficiency', 60)
         self.supercharge_mult = dict.get('supercharge_mult', 4)
         self.offset = dict.get('offset', 0)
         self.jumps_left = dict.get('jumps_left', 0)
         self.next_stop = dict.get('next_stop', "")
+        self.headers = dict.get('headers', [])
         self.route = dict.get('route', [])
         self.ships = dict.get('ships', {})

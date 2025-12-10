@@ -1,11 +1,34 @@
 {
-    "system": "",
+    "source": "Sol",
+    "destination": "Agartha",
     "range": 32.0,
     "efficiency": 60,
     "supercharge_mult": 4,
     "offset": 0,
-    "jumps_left": 0,
-    "next_stop": "Col 285 Sector AA-A a30-3",
-    "route": [],
+    "jumps_left": 6,
+    "next_stop": "Sol",
+    "headers": [
+        "System Name",
+        "Jumps",
+        "Neutron Star",
+        "Distance Jumped",
+        "Distance Remaining"
+    ],
+    "route": [
+        [
+            "Sol",
+            0,
+            false,
+            0,
+            148.319696675374
+        ],
+        [
+            "Agartha",
+            6,
+            false,
+            148.319696675374,
+            0
+        ]
+    ],
     "ships": {}
 }

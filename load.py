@@ -11,7 +11,7 @@ from Router.context import Context, Debug
 from Router.router import Router
 from Router.ui import UI
 
-NAME="Navl's Neutron Dance"
+NAME="Navl's Neutron Dancer"
 
 def plugin_start3(plugin_dir: str) -> str:
     # Debug Class
@@ -32,20 +32,19 @@ def plugin_start(plugin_dir: str) -> None:
 
 
 def plugin_stop() -> None:
-    Context.router.save_route()
+    Context.router.save()
     if Context.router.update_available:
         Context.router.install_update()
 
 
-def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: dict, state: dict) -> None:
-    sys:str = entry.get('StarSystem', '')
-    if sys != Context.router.next_stop or sys == Context.system:
-        return
+def journal_entry(cmdr:str, is_beta:bool, system:str, station:str, entry:dict, state:dict) -> None:
+    sys:str = entry.get('StarSystem', system)
+    if sys == Context.system or sys == '': return
 
     match entry['event']:
         case 'FSDJump' | 'Location' | 'SupercruiseEntry' | 'SupercruiseExit':
             Debug.logger.debug(f"Current system changed: {Context.system} -> {sys}")
-            Context.router.system = sys
+            Context.system = sys
             Context.router.update_route()
             Context.ui.set_source_ac(sys)
 
@@ -63,7 +62,6 @@ def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: di
             Context.router.ship = entry.get('ShipID', '')
             Context.router.range = entry.get('MaxJumpRange', 0.0) * 0.95
             Context.router.save()
-
 
 
 def ask_for_update() -> None:

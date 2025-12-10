@@ -34,4 +34,5 @@ btns:dict = {
     "import_file": "Import file",
     "export_route": "Export for TCE",
     "clear_route": "Clear route",
+    "show_route": "Show route",
 }
