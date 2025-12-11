@@ -41,28 +41,14 @@ class UI():
         self.route_fr = None
         self.plot_fr = None
 
-        Debug.logger.debug(f"Creating Frame")
+        self.error_lbl = ttk.Label(self.frame, textvariable=self.error_txt)
+        self.error_lbl.pack()
 
-        self.title_fr = tk.Frame(self.frame)
-        self.title_fr.grid(row=0, column=0)
-        col:int = 0; row:int = 0
-        self.lbl = ttk.Label(self.title_fr, text=lbls["plot_title"], font=("Helvetica", 9, "bold"))
-        self.lbl.grid(row=row, column=col, padx=(0,5), pady=5)
-        col += 1
-
-        self.plot_gui_btn = self._button(self.title_fr, text=" "+btns["plot_route"]+" ", command=lambda: self.show_frame('Plot'))
-        self.plot_gui_btn.grid(row=row, column=col, sticky=tk.W)
-
-        self.route_fr = self._create_route_fr(self.frame)
-        self.plot_fr = self._create_plot_fr(self.frame)
-
-        #self.csv_route_btn = ttk.Button(self.frame, text=btns["import_file"], command=lambda: Context.router.import_csv)
-
+        self.update_display(True)
         self._initialized = True
 
     def _button(self, fr:tk.Frame, **kw) -> tk.Button|ttk.Button:
         """ Deal with EDMC theme/color weirdness """
-        #return ttk.Button(fr, cursor="hand2", **kw)
         if config.get_int('theme') == 0:
             return ttk.Button(fr, **kw)
         else:
@@ -71,6 +57,7 @@ class UI():
     @catch_exceptions
     def update_display(self, show:bool = True) -> None:
         """ Update the display UI """
+        Debug.logger.debug(f"Updating display UI, show={show}")
 
         self.hide_error()
         if show == False or Context.router.route == []: # We don't have a route so show the plot UI
@@ -81,39 +68,25 @@ class UI():
         self.waypoint_btn.configure(text=Context.router.next_stop)
         if Context.router.jumps_left > 0:
             ToolTip(self.waypoint_btn, tts["jump"] + " " + str(Context.router.jumps_left))
-#            self.jumpcounttxt_lbl.configure(text=lbls["jumps_remaining"] + str(Context.router.jumps_left))
-#        else:
-#            self.jumpcounttxt_lbl.grid_remove()
-
-        #if Context.router.roadtoriches:
-        #    self.bodies_lbl.configure(text=lbls["body_count"] + Context.router.bodies)
-        #else:
-        #    self.bodies_lbl.grid_remove()
-
-        #self.fleetrestock_lbl.grid_remove()
-        #if Context.router.fleetcarrier:
-        #    if Context.router.offset > 0:
-        #        restock = Context.router.route[Context.router.offset - 1][2]
-        #        if restock.lower() == "yes":
-        #            self.fleetrestock_lbl.configure(text=f"At: {Context.router.route[Context.router.offset - 1][0]}\n   {lbls['restock_tritium']}")
-        #            self.fleetrestock_lbl.grid()
-
         self.waypoint_prev_btn.config(state=tk.DISABLED if Context.router.offset == 0 else tk.NORMAL)
-        self.waypoint_prev_btn.config(cursor="arrow" if Context.router.offset == 0 else "hand2")
         self.waypoint_next_btn.config(state=tk.DISABLED if Context.router.offset == len(Context.router.route) - 1 else tk.NORMAL)
-        self.waypoint_next_btn.config(cursor="arrow" if Context.router.offset == len(Context.router.route) - 1 else "hand2")
 
-
-    def set_source_ac(self, text: str):
+    def set_source_ac(self, text: str) -> None:
+        if self.source_ac == None: return
         self.source_ac.delete(0, tk.END)
         self.source_ac.insert(0, text)
         self.source_ac.set_default_style()
 
-    def set_dest_ac(self, text: str):
+    def set_dest_ac(self, text: str) -> None:
+        if self.dest_ac == None: return
         self.dest_ac.delete(0, tk.END)
         self.dest_ac.insert(0, text)
         self.dest_ac.set_default_style()
 
+    def set_range(self, range:float, supercharge_mult:int) -> None:
+        if self.plot_fr == None: return
+        self.range_entry.set_text(str(range), False)
+        self.multiplier.set(supercharge_mult)
 
     def _clear_route(self) -> None:
         clear: bool = confirmDialog.askyesno(
@@ -122,14 +95,27 @@ class UI():
         )
         if clear == True:
             Context.router.clear_route()
-            self.enable_plot_gui(True)
             self.show_frame('Plot')
+            self.enable_plot_gui(True)
 
 
-    def _create_route_fr(self, frame:tk.Frame) -> tk.Frame:
+    def _create_title_fr(self) -> tk.Frame:
+        title_fr:tk.Frame = tk.Frame(self.frame)
+        title_fr.grid(row=0, column=0)
+        col:int = 0; row:int = 0
+        self.lbl = ttk.Label(title_fr, text=lbls["plot_title"], font=("Helvetica", 9, "bold"))
+        self.lbl.grid(row=row, column=col, padx=(0,5), pady=5)
+        col += 1
+        self.plot_gui_btn = self._button(title_fr, text=" "+btns["plot_route"]+" ", command=lambda: self.show_frame('Plot'))
+        Debug.logger.debug(f"plot_gui_btn created {self.plot_gui_btn}")
+        self.plot_gui_btn.grid(row=row, column=col, sticky=tk.W)
+        return title_fr
+
+
+    def _create_route_fr(self) -> tk.Frame:
         """ Route display frame """
-
-        route_fr:tk.Frame = tk.Frame(frame)
+        Debug.logger.debug(f"Creating route frame")
+        route_fr:tk.Frame = tk.Frame(self.frame)
         fr1:tk.Frame = tk.Frame(route_fr)
         fr1.grid_columnconfigure(0, weight=0)
         fr1.grid_columnconfigure(1, weight=1)
@@ -140,13 +126,16 @@ class UI():
         col:int = 0
         self.waypoint_prev_btn = self._button(fr1, text=btns["prev"], width=3, command=lambda: Context.router.goto_prev_waypoint())
         self.waypoint_prev_btn.grid(row=row, column=col, padx=5, pady=5, sticky=tk.W)
+        Debug.logger.debug(f"waypoint_prev_btn created {self.waypoint_prev_btn}")
         col += 1
         self.waypoint_btn = self._button(fr1, text=Context.router.next_stop, width=30, command=lambda: Context.router.copy_waypoint())
         ToolTip(self.waypoint_btn, tts["jump"] + " " + str(Context.router.jumps_left))
         self.waypoint_btn.grid(row=row, column=col, padx=5, pady=5, sticky=tk.W)
+        Debug.logger.debug(f"waypoint_btn created {self.waypoint_btn}")
         col += 1
         self.waypoint_next_btn = self._button(fr1, text=btns["next"], width=3, command=lambda: Context.router.goto_next_waypoint())
         self.waypoint_next_btn.grid(row=row, column=col, padx=5, pady=5, sticky=tk.W)
+        Debug.logger.debug(f"waypoint_next_btn created {self.waypoint_next_btn}")
         #row +=1
         #col -= 1
         #self.jumpcounttxt_lbl = ttk.Label(fr1, text=lbls["jumps_remaining"] + " " + str(Context.router.jumps_left))
@@ -175,17 +164,17 @@ class UI():
         self.clear_route_btn = self._button(fr2, text=btns["clear_route"], command=lambda: self._clear_route())
         self.clear_route_btn.grid(row=row, column=col, padx=5, sticky=tk.W)
 
+        Debug.logger.debug(f"show_route_btn created {self.show_route_btn}")
+        Debug.logger.debug(f"clear_route_btn created {self.clear_route_btn}")
 
         row += 1; col = 0
-        self.error_lbl = ttk.Label(fr2, textvariable=self.error_txt)
-        self.error_lbl.grid(row=row, column=col, padx=5, pady=5, sticky=tk.W)
-
         return route_fr
 
 
-    def _create_plot_fr(self, frame:tk.Frame) -> tk.Frame:
+    def _create_plot_fr(self) -> tk.Frame:
         """ Route plotting frame """
-        plot_fr:tk.Frame = tk.Frame(frame)
+        Debug.logger.debug(f"Creating plot frame")
+        plot_fr:tk.Frame = tk.Frame(self.frame)
         row:int = 0
         col:int = 0
 
@@ -220,8 +209,9 @@ class UI():
         self.dest_ac.grid(row=row, column=col, columnspan=2)
         col += 2
 
-        self.efficiency_slider = tk.Scale(plot_fr, from_=0, to=100, resolution=5, orient=tk.HORIZONTAL, cursor="hand2")
-        if config.get_int('theme') == 1: self.efficiency_slider.configure(bg='black', troughcolor='darkgrey', highlightbackground='black', border=0)
+        self.efficiency_slider = tk.Scale(plot_fr, from_=0, to=100, resolution=5, orient=tk.HORIZONTAL, fg='black')
+        if config.get_int('theme') == 1: self.efficiency_slider.configure(fg=config.get_str('dark_text'),bg='black', troughcolor='darkgrey', highlightbackground='black', border=0)
+        if config.get_int('theme') == 2: self.efficiency_slider.configure(fg=config.get_str('dark_text'), border=0)
         ToolTip(self.efficiency_slider, tts["efficiency"])
         self.efficiency_slider.grid(row=row, column=col)
         self.efficiency_slider.set(Context.router.efficiency)
@@ -234,11 +224,11 @@ class UI():
         l1 = ttk.Label(plot_fr, text=lbls["supercharge_label"])
         l1.grid(row=row, column=col, padx=5, pady=5)
         col += 1
-        r1 = tk.Radiobutton(plot_fr, text=lbls["standard_supercharge"], variable=self.multiplier, value=4, cursor="hand2")
+        r1 = tk.Radiobutton(plot_fr, text=lbls["standard_supercharge"], variable=self.multiplier, value=4)
         if config.get_int('theme') == 1: r1.configure(bg='black', fg=config.get_str('dark_text'))
         r1.grid(row=row, column=col)
         col += 1
-        r2 = tk.Radiobutton(plot_fr, text=lbls["overcharge_supercharge"], variable=self.multiplier, value=6, cursor="hand2")
+        r2 = tk.Radiobutton(plot_fr, text=lbls["overcharge_supercharge"], variable=self.multiplier, value=6)
         if config.get_int('theme') == 1: r2.configure(bg='black', fg=config.get_str('dark_text'))
         r2.grid(row=row, column=col)
 
@@ -270,21 +260,26 @@ class UI():
 
 
     def show_frame(self, which:str = 'None') -> str:
-        if self.route_fr == None or self.plot_fr == None or self.title_fr == None: return 'Ok'
-
+        """ Display the appropriate frame, creating it if necessary"""
         Debug.logger.debug(f"Show_frame {which}")
         match which:
             case 'Route':
+                if self.route_fr == None:
+                    self.route_fr = self._create_route_fr()
                 self.route_fr.grid()
-                self.plot_fr.grid_forget()
-                self.title_fr.grid_forget()
+                if self.plot_fr != None: self.plot_fr.grid_forget()
+                if self.title_fr != None: self.title_fr.grid_forget()
             case 'Plot':
-                self.route_fr.grid_forget()
+                if self.route_fr != None: self.route_fr.grid_forget()
+                if self.plot_fr == None:
+                    self.plot_fr = self._create_plot_fr()
                 self.plot_fr.grid()
-                self.title_fr.grid_forget()
+                if self.title_fr != None: self.title_fr.grid_forget()
             case _:
-                self.plot_fr.grid_forget()
-                self.route_fr.grid_forget()
+                if self.route_fr != None: self.route_fr.grid_forget()
+                if self.plot_fr != None: self.plot_fr.grid_forget()
+                if self.title_fr == None:
+                    self.title_fr = self._create_title_fr()
                 self.title_fr.grid()
         return 'Ok'
 
@@ -322,11 +317,11 @@ class UI():
         """ Set and show the error text """
         if error != None:
             self.error_txt.set(error)
-        self.error_lbl.grid()
+        self.error_lbl.pack()
 
 
     def hide_error(self) -> None:
-        self.error_lbl.grid_remove()
+        self.error_lbl.pack_forget()
 
 
     def enable_plot_gui(self, enable:bool) -> None:

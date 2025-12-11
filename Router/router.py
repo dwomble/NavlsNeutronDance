@@ -43,18 +43,25 @@ class Router():
         self.update_available:bool = False
         self.roadtoriches:bool = False
         self.fleetcarrier:bool = False
+
         self.headers:list = []
         self.route:list = []
         self.ships:dict = {}
         self.history:list = []
         self.bodies:str = ""
 
+        self.system:str = ""
         self.src:str = ""
         self.dest:str = ""
-        self.ship:str = ""
+        self.ship_id:str = ""
+        self.ship:dict = {
+            'name': "",
+            'max_range': 0.0,
+            'type': ""
+        }
         self.range:float = 32.0
-        self.efficiency:int = 60
         self.supercharge_mult:int = 4
+        self.efficiency:int = 60
         self.offset:int = 0
         self.jumps_left:int = 0
         self.next_stop:str = ""
@@ -63,22 +70,19 @@ class Router():
         self._initialized = True
 
 
-    def set_ship(self, ship_id:str, range:str, name:str, type:str) -> None:
+    def set_ship(self, ship_id:str, range:float, name:str, type:str) -> None:
         Debug.logger.debug(f"Setting current ship to {ship_id} {name} {type}")
-        ship:str = str(ship_id)
-        self.ship = ship
+        self.ship_id = str(ship_id)
+
         self.range = round(float(range) * 0.95, 2)
         self.supercharge_mult = 6 if type in ('explorer_nx') else 4
-        if ship not in self.ships: # Temporarily. In future move this to end of a route
-            self.ships[ship] = {'range': range, 'name': name, 'type': type, 'supercharge_mult': self.supercharge_mult}
 
-        if ship in self.ships:
-            self.ship_name = self.ships[ship].get('name', name)
-            self.range = self.ships[ship].get('range', range)
-            self.supercharge_mult = self.supercharge_mult
+        self.ship['name'] = name
+        self.ship['max_range'] = float(range)
+        self.ship['type'] = type
 
-        Context.ui.range_entry.var.set(str(self.range))
-        Context.ui.multiplier.set(self.supercharge_mult)
+        Context.ui.set_range(self.range, self.supercharge_mult)
+        self.save()
 
 
     def copy_waypoint(self) -> None:
@@ -115,30 +119,46 @@ class Router():
         return self.headers.index(which)
 
 
+
+    def _store_history(self) -> None:
+        """ Upon route completion store route and ship data """
+        if self.src != '':
+            self.history.insert(0, self.src)
+        if self.dest != '':
+            self.history.insert(0, self.dest)
+        self.ships[self.ship_id] = self.ship
+        self.save()
+
+    @catch_exceptions
     def update_route(self, direction:int = 0) -> None:
         """ Step forwards or backwards through the route """
+        Debug.logger.debug(f"Updating route by {direction} {self.system}")
         c:int = self._syscol()
         if self.route == []: return
 
         if direction == 0: # Figure out if we're on the route
-            for r in self.route:
-                if self.route[direction][c] == Context.system:
+            for r in self.route[self.offset:]:
+                if r[c] == self.system:
+                    Debug.logger.debug(f"Found system {self.offset} {direction}")
                     self.offset = direction
-                    direction = 0
+                    direction = 1
                     break
-            direction += 1
+                direction += 1
 
             # We aren't on the route so just return
-            if self.route[self.offset][c] != Context.system:
+            if self.route[self.offset][c] != self.system:
                 Debug.logger.debug(f"We aren't on the route")
                 return
+        Debug.logger.debug(f"New offset {self.offset} {direction} {self.route[self.offset][c]}")
 
         if self.offset + direction < 0 or self.offset + direction >= len(self.route):
             if direction > 0:
                 self.next_stop = "End of the road!"
+                self._store_history()
             Context.ui.update_display()
             return
 
+        Debug.logger.debug(f"Stepping to {self.offset + direction} {self.route[self.offset + direction][c]}")
         self.offset += direction
         self.next_stop = self.route[self.offset][c]
 
@@ -267,7 +287,7 @@ class Router():
             self.supercharge_mult = supercharge_mult
             self.efficiency = efficiency
             self.range = range
-            self.offset = 1 if self.route[0][self._syscol()] == Context.system else 0
+            self.offset = 1 if self.route[0][self._syscol()] == self.system else 0
             self.jumps_left = sum([j[cols.index('jumps')] for j in self.route]) if 'Jumps' in hdrs else 0
             self.next_stop = self.route[self.offset][self._syscol()]
             self.copy_waypoint()
@@ -289,10 +309,10 @@ class Router():
 
         if response.status_code == 400 and "error" in failure:
             Context.ui.show_error(failure["error"])
-            if "starting system" in failure["error"]:
-                Context.ui.source_ac["fg"] = "red"
-            if "finishing system" in failure["error"]:
-                Context.ui.dest_ac["fg"] = "red"
+            #if "starting system" in failure["error"]:
+            #    Context.ui.source_ac["fg"] = "red"
+            #if "finishing system" in failure["error"]:
+            #    Context.ui.dest_ac["fg"] = "red"
         else:
             Context.ui.show_error(lbls["plot_error"])
         return
@@ -449,8 +469,8 @@ class Router():
 
     def _as_dict(self) -> dict:
         ''' Return a Dictionary representation of our data, suitable for serializing '''
-
         return {
+            'system': self.system,
             'source': self.src,
             'destination': self.dest,
             'range': self.range,
@@ -460,8 +480,9 @@ class Router():
             'jumps_left': self.jumps_left,
             'next_stop': self.next_stop,
             'headers': self.headers,
+            'shipid': self.ship_id,
+            'ship': self.ship,
             'route': self.route,
-            'ship': str(self.ship),
             'ships': self.ships,
             'history': self.history
             }
@@ -469,6 +490,7 @@ class Router():
 
     def _from_dict(self, dict:dict) -> None:
         ''' Populate our data from a Dictionary that has been deserialized '''
+        self.system = dict.get('system', '')
         self.src = dict.get('source', '')
         self.dest = dict.get('destination', '')
         self.range = dict.get('range', 32.0)
@@ -479,6 +501,7 @@ class Router():
         self.next_stop = dict.get('next_stop', "")
         self.headers = dict.get('headers', [])
         self.route = dict.get('route', [])
-        self.ship = dict.get('ship', '')
+        self.ship_id = dict.get('shipid', "")
+        self.ship = dict.get('ship', {})
         self.ships = dict.get('ships', {})
         self.history = dict.get('history', [])

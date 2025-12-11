@@ -1,7 +1,7 @@
 import tkinter as tk
 from functools import partial
 from config import config  # type: ignore
-
+from Router.context import Debug, catch_exceptions
 
 class Placeholder(tk.Entry):
     """
@@ -51,6 +51,7 @@ class Placeholder(tk.Entry):
         if self.get() != self.placeholder:
             self.set_text(self.placeholder, True)
 
+    @catch_exceptions
     def set_text(self, text, placeholder_style=True) -> None:
         if placeholder_style:
             self['fg'] = self.placeholder_color
@@ -59,25 +60,29 @@ class Placeholder(tk.Entry):
         self.delete(0, tk.END)
         self.insert(0, text)
 
+    @catch_exceptions
     def force_placeholder_color(self) -> None:
         self['fg'] = self.placeholder_color
 
+    @catch_exceptions
     def set_default_style(self) -> None:
         self['fg'] = config.get_str('dark_text') if config.get_int('theme') > 0 else "black"
         #self['fg'] = 'black'
 
+    @catch_exceptions
     def set_error_style(self, error=True) -> None:
         if error:
             self['fg'] = "red"
         else:
             self.set_default_style()
-
+    @catch_exceptions
     def focus_in(self, e, *args) -> None:
         if self['fg'] == "red" or self['fg'] == self.placeholder_color:
             self.set_default_style()
             if self.get() == self.placeholder:
                 self.delete('0', 'end')
 
+    @catch_exceptions
     def focus_out(self, *args) -> None:
         if not self.get():
             self.put_placeholder()

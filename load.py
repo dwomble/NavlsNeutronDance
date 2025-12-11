@@ -7,12 +7,13 @@ from semantic_version import Version #type: ignore
 
 from config import appname  # type: ignore
 
-from Router.context import Context, Debug
+from Router.context import Context, Debug, catch_exceptions
 from Router.router import Router
 from Router.ui import UI
 
 NAME="Navl's Neutron Dancer"
 
+@catch_exceptions
 def plugin_start3(plugin_dir: str) -> str:
     # Debug Class
     Debug(plugin_dir)
@@ -21,44 +22,35 @@ def plugin_start3(plugin_dir: str) -> str:
     version_file = Context.plugin_dir / "version"
     Context.plugin_version = Version(version_file.read_text())
     Context.plugin_useragent = f"EDMC-{NAME}-{Context.plugin_version}"
-    Context.router = Router()
-    Context.router.check_for_update()
+    Debug.logger.info(f"Starting (start3) {NAME} version {Context.plugin_version} in {appname}")
+    #Context.router.check_for_update()
     return NAME
 
-
+@catch_exceptions
 def plugin_start(plugin_dir: str) -> None:
     """EDMC calls this function when running in Python 2 mode."""
     raise EnvironmentError("This plugin requires EDMC version 4.0 or later.")
 
-
+@catch_exceptions
 def plugin_stop() -> None:
     Context.router.save()
     if Context.router.update_available:
         Context.router.install_update()
 
-
+@catch_exceptions
 def journal_entry(cmdr:str, is_beta:bool, system:str, station:str, entry:dict, state:dict) -> None:
     sys:str = entry.get('StarSystem', system)
+    Debug.logger.debug(f"Journal Entry: {entry['event']} in {sys} ({Context.router.system}")
+    if sys != Context.router.system:
+        Context.router.system = sys
+        Context.router.update_route()
 
-    #Debug.logger.debug(f"Journal entry received: {entry} {system}")
     match entry['event']:
-        case 'FSDJump' | 'Location' | 'SupercruiseEntry' | 'SupercruiseExit':
-            if Context.system == sys: return
-            Debug.logger.debug(f"Current system changed: {Context.system} -> {sys}")
-            Context.system = sys
-            Context.router.update_route()
-            Context.ui.set_source_ac(sys)
-
-        case 'FSSDiscoveryScan':
-            if Context.system == sys: return
-            Debug.logger.debug(f"Current system changed: {Context.system} -> {sys}")
-            Context.system = sys
-            Context.router.update_route()
-
         case 'Loadout':
-            Context.router.set_ship(entry.get('ShipID', ''), entry.get('MaxJumpRange', 0.0), entry.get('ShipName', ''), entry.get('ShipType', ''))
+            Context.router.set_ship(entry.get('ShipID', ''), entry.get('MaxJumpRange', 0.0), entry.get('ShipName', ''), entry.get('Ship', ''))
 
 
+@catch_exceptions
 def ask_for_update() -> None:
     if Context.router.update_available:
         update_txt = "Update available!\n"
@@ -72,12 +64,11 @@ def ask_for_update() -> None:
         else:
             Context.router.update_available = False
 
-
+@catch_exceptions
 def plugin_app(parent:tk.Widget) -> tk.Frame:
     Context.router = Router()
     Context.ui = UI(parent)
     Context.ui.update_display(True)
 
-    Debug.logger.debug(f"Parent: [{parent}] [{Context.ui}] [{Context.ui.parent}]")
     parent.master.after_idle(ask_for_update)
     return Context.ui.frame
