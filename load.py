@@ -7,36 +7,44 @@ from semantic_version import Version #type: ignore
 
 from config import appname  # type: ignore
 
+from Router.constants import GIT_PROJECT, NAME, errs, lbls
 from utils.Debug import Debug, catch_exceptions
+
+from Router.updater import Updater
 from Router.context import Context
 from Router.router import Router
 from Router.ui import UI
-
-NAME="Navl's Neutron Dancer"
 
 @catch_exceptions
 def plugin_start3(plugin_dir: str) -> str:
     # Debug Class
     Debug(plugin_dir)
+    Debug.logger.info(f"Starting (start3) {NAME} version {Context.plugin_version} in {appname}")
+
     Context.plugin_name = NAME
     Context.plugin_dir = Path(plugin_dir).resolve()
     version_file = Context.plugin_dir / "version"
     Context.plugin_version = Version(version_file.read_text())
-    Context.plugin_useragent = f"EDMC-{NAME}-{Context.plugin_version}"
-    Debug.logger.info(f"Starting (start3) {NAME} version {Context.plugin_version} in {appname}")
-    #Context.router.check_for_update()
+    Context.plugin_useragent = f"{GIT_PROJECT}-{Context.plugin_version}"
+
+    Context.updater = Updater(str(Context.plugin_version), str(Context.plugin_dir))
+    Context.updater.check_for_update()
+
     return NAME
+
 
 @catch_exceptions
 def plugin_start(plugin_dir: str) -> None:
     """EDMC calls this function when running in Python 2 mode."""
-    raise EnvironmentError("This plugin requires EDMC version 4.0 or later.")
+    raise EnvironmentError(errs["required_version"])
+
 
 @catch_exceptions
 def plugin_stop() -> None:
     Context.router.save()
-    if Context.router.update_available:
-        Context.router.install_update()
+    if Context.updater.update_available:
+        Updater().install_update()
+
 
 @catch_exceptions
 def journal_entry(cmdr:str, is_beta:bool, system:str, station:str, entry:dict, state:dict) -> None:
@@ -53,23 +61,22 @@ def journal_entry(cmdr:str, is_beta:bool, system:str, station:str, entry:dict, s
 
 @catch_exceptions
 def ask_for_update() -> None:
-    if Context.router.update_available:
-        update_txt = "Update available!\n"
-        update_txt += "If you choose to install it, you will have to restart EDMC for it to take effect.\n\n"
-        #update_txt += Context.router.spansh_updater.changelogs
-        update_txt += "\n\nInstall?"
-        install_update = confirmDialog.askyesno("SpanshRouterRedux", update_txt)
+    if Context.updater.update_available:
+        update_txt = f"{lbls['update_available']}\n{lbls['install_instructions']}\n\n" + \
+                    f"{Context.plugin_changelogs}\n\n{lbls['install']}"
+        install_update = confirmDialog.askyesno(GIT_PROJECT, update_txt)
 
         if install_update:
-            confirmDialog.showinfo("SpanshRouterRedux", "The update will be installed as soon as you quit EDMC.")
+            confirmDialog.showinfo(GIT_PROJECT, lbls['update_confirm'])
+            Context.updater.update_available = True
         else:
-            Context.router.update_available = False
+            Context.updater.update_available = False
+
 
 @catch_exceptions
 def plugin_app(parent:tk.Widget) -> tk.Frame:
     Context.router = Router()
     Context.ui = UI(parent)
-    Context.ui.update_display(True)
 
     parent.master.after_idle(ask_for_update)
     return Context.ui.frame

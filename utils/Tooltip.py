@@ -3,10 +3,9 @@
 # may be useful for some purposes in (or almost in ;) the current project scope
 # Ideas gleaned from PySol
 
-from tkinter import *
+import tkinter as tk
 
 DELAY: int = 500 # Delay before tooltip appears in ms
-
 
 class ToolTipBase:
 
@@ -45,15 +44,15 @@ class ToolTipBase:
         # event and it reappears, and so on forever :-(
         x = self.button.winfo_rootx() + 20
         y = self.button.winfo_rooty() + self.button.winfo_height() + 1
-        self.tipwindow = tw = Toplevel(self.button)
-        tw.wm_overrideredirect(1)
+        self.tipwindow = tw = tk.Toplevel(self.button)
+        tw.wm_overrideredirect(True)
         tw.wm_geometry("+%d+%d" % (x, y))
         self.showcontents()
 
     def showcontents(self, text="Your text here"):
         # Override this in derived class
-        label = Label(self.tipwindow, text=text, justify=LEFT,
-                      background="#ffffe0", relief=SOLID, borderwidth=1)
+        label = tk.Label(self.tipwindow, text=text, justify=tk.LEFT,
+                      background="#ffffe0", relief=tk.SOLID, borderwidth=1)
         label.pack()
 
     def hidetip(self):

@@ -13,6 +13,7 @@ from config import appname  # type: ignore
 if TYPE_CHECKING:
     from .router import Router
     from .ui import UI
+    from .updater import Updater
 @dataclass
 class Context:
     # plugin parameters
@@ -20,7 +21,9 @@ class Context:
     plugin_version:Version = None
     plugin_dir:Path = None
     plugin_useragent:str = None
+    plugin_changelogs:str = None
 
     # global objects
     router:'Router' = None
     ui:'UI' = None
+    updater:'Updater' = None

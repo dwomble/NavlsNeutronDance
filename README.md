@@ -24,6 +24,7 @@ If for some reason, your clipboard should be empty or containing other stuff tha
 
 If you close EDMC, the plugin will save your progress. The next time you run EDMC, it will start back where you stopped.
 
+
 ## Suggestions
 
 Let me know if you have any suggestions.

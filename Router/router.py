@@ -1,32 +1,20 @@
-import ast
-import csv
 import json
-import os
 from os import path
 import re
 import requests
 from requests import Response
-import tkinter.filedialog as filedialog
-import webbrowser
 from pathlib import Path
-from semantic_version import Version # type: ignore
 from time import sleep
-from typing import TYPE_CHECKING
 
 from utils.Debug import Debug, catch_exceptions
 
-from .strings import hdrs, lbls
+from .constants import lbls, HEADERS, HEADER_MAP, DATA_DIR, SPANSH_ROUTE, SPANSH_RESULTS
 from .context import Context
 
-DATA_DIR = 'data'
-# Map from returned data to our header names
-HDRMAP:dict = {"System Name": "system", "Distance Jumped": "distance_jumped", "Distance Remaining": "distance_left",
-               "Jumps": "jumps", "Neutron Star": "neutron_star"}
-# Headers that we accept
-HEADERS:list = ["System Name", "Jumps", "Neutron Star", "Body Name", "Body Subtype",
-                "Is Terraformable", "Distance To Arrival", "Estimated Scan Value", "Estimated Mapping Value",
-                "Distance", "Distance Jumped", "Distance Remaining", "Fuel Used", "Icy Ring", "Pristine", "Restock Tritium"]
 class Router():
+    """
+    Class to manage all the route data and state information.
+    """
     # Singleton pattern
     _instance = None
 
@@ -40,10 +28,6 @@ class Router():
         # Only initialize if it's the first time
         if hasattr(self, '_initialized'): return
 
-        self.update_available:bool = False
-        self.roadtoriches:bool = False
-        self.fleetcarrier:bool = False
-
         self.headers:list = []
         self.route:list = []
         self.ships:dict = {}
@@ -54,11 +38,7 @@ class Router():
         self.src:str = ""
         self.dest:str = ""
         self.ship_id:str = ""
-        self.ship:dict = {
-            'name': "",
-            'max_range': 0.0,
-            'type': ""
-        }
+        self.ship:dict = {'name': "", 'range': 0.0, 'type': "" }
         self.range:float = 32.0
         self.supercharge_mult:int = 4
         self.efficiency:int = 60
@@ -71,6 +51,7 @@ class Router():
 
 
     def set_ship(self, ship_id:str, range:float, name:str, type:str) -> None:
+        """ Set the current ship details"""
         Debug.logger.debug(f"Setting current ship to {ship_id} {name} {type}")
         self.ship_id = str(ship_id)
 
@@ -78,7 +59,7 @@ class Router():
         self.supercharge_mult = 6 if type in ('explorer_nx') else 4
 
         self.ship['name'] = name
-        self.ship['max_range'] = float(range)
+        self.ship['range'] = round(float(range) * 0.95, 2)
         self.ship['type'] = type
 
         Context.ui.set_range(self.range, self.supercharge_mult)
@@ -86,17 +67,19 @@ class Router():
 
 
     def goto_next_waypoint(self) -> None:
+        """ Move to the next waypoint """
         if self.offset < len(self.route) - 1:
             self.update_route(1)
 
 
     def goto_prev_waypoint(self) -> None:
+        """ Move back to the previous waypoint"""
         if self.offset > 0:
             self.update_route(-1)
 
 
     def _syscol(self, which:str = '') -> int:
-        """ Figure out which column has a chosen key """
+        """ Figure out which column has a chosen key, by default the system name """
         if which == '':
             for h in ['System Name', 'system']:
                 if h in self.headers:
@@ -108,23 +91,27 @@ class Router():
         return self.headers.index(which)
 
 
-
     def _store_history(self) -> None:
-        """ Upon route completion store route and ship data """
+        """ Upon route completion store src, dest and ship data """
         if self.src != '':
             self.history.insert(0, self.src)
         if self.dest != '':
             self.history.insert(0, self.dest)
+        self.history = self.history[:10]  # Keep only last 10 entries
         self.ships[self.ship_id] = self.ship
         self.save()
 
+
     @catch_exceptions
     def update_route(self, direction:int = 0) -> None:
-        """ Step forwards or backwards through the route """
+        """
+        Step forwards or backwards through the route.
+        If no direction is given pickup from wherever we are on the route
+        """
         Debug.logger.debug(f"Updating route by {direction} {self.system}")
-        c:int = self._syscol()
         if self.route == []: return
 
+        c:int = self._syscol()
         if direction == 0: # Figure out if we're on the route
             for r in self.route[self.offset:]:
                 if r[c] == self.system:
@@ -138,90 +125,28 @@ class Router():
             if self.route[self.offset][c] != self.system:
                 Debug.logger.debug(f"We aren't on the route")
                 return
-        Debug.logger.debug(f"New offset {self.offset} {direction} {self.route[self.offset][c]}")
+            Debug.logger.debug(f"New offset {self.offset} {direction} {self.route[self.offset][c]}")
 
+        # Are we at one end or the other?
         if self.offset + direction < 0 or self.offset + direction >= len(self.route):
             if direction > 0:
                 self.next_stop = lbls['route_complete']
                 self._store_history()
-            Context.ui.update_display(True)
+            Context.ui.show_frame('Default')
             return
 
         Debug.logger.debug(f"Stepping to {self.offset + direction} {self.route[self.offset + direction][c]}")
         self.offset += direction
         self.next_stop = self.route[self.offset][c]
-
-        Context.ui.update_display()
-
-
-    def goto_changelog_page(self) -> None:
-        return
-        changelog_url = 'https://github.com/rinkulu/EDMC-SpanshRouterRE/blob/master/CHANGELOG.md#'
-        changelog_url += self.spansh_updater.version.replace('.', '')
-        webbrowser.open(changelog_url)
-
-
-    @catch_exceptions
-    def import_csv(self, filepath:Path|str, clear_previous_route:bool = True):
-        """ Import a csv file """
-        ftypes = [
-            ('All supported files', '*.csv *.txt'),
-            ('CSV files', '*.csv'),
-            ('Text files', '*.txt'),
-        ]
-        filename:str = filedialog.askopenfilename(filetypes=ftypes, initialdir=os.path.expanduser('~'))
-
-        if len(filename) == 0:
-            Debug.logger.debug(f"No filename selected")
-            return
-
-        with open(filepath, 'r', encoding='utf-8-sig', newline='') as csvfile:
-            self.roadtoriches = False
-            self.fleetcarrier = False
-
-            if clear_previous_route:
-                self.clear_route()
-
-            route_reader = csv.DictReader(csvfile)
-            # Check it has column headings
-            if not route_reader.fieldnames:
-                Debug.logger.error(f"File {filepath} is empty or does't have a header row")
-                return
-
-            hdrs:list = list(set(HEADERS).intersection(set(route_reader.fieldnames)))
-            if hdrs == [] or "System Name" not in hdrs:
-                Debug.logger.error(f"File {filepath} is of unsupported format")
-                return
-
-            route:list = []
-            for row in route_reader:
-                r:list = []
-                if row not in (None, "", []): continue
-                for col in hdrs:
-                    if col in row:
-                        if col in ["body_name", "body_subtype"]:
-                            r.append(ast.literal_eval(row[col]))
-                            continue
-                        m = re.match(r"^\d+(\.\d+)?$", row[col])
-                        Debug.logger.debug(f"Row {row[col]} {m}")
-                        r.append(row[col] if not re.match(r"^\d+(\.\d+)?$", row[col]) else round(float(row[col]), 2))
-                route.append(r)
-
-            self.fleetcarrier = True if "Fuel Used" in hdrs else False
-            self.roadtoriches = True if "Estimated Scan Value" in hdrs else False
-            Debug.logger.debug(f"Headers: {hdrs} rows {len(route)}")
-            self.headers = hdrs
-            self.route = route
-            self.save()
+        Context.ui.show_frame('Route')
 
 
     def plot_route(self, source:str, dest:str, efficiency:int, range:float, supercharge_mult:int = 4) -> bool:
+        """ Plot a route by querying Spansh"""
         Debug.logger.debug(f"Plotting route")
 
         try:
-            job_url = "https://spansh.co.uk/api/route?"
-
-            results:Response = requests.post(job_url,
+            results:Response = requests.post(SPANSH_ROUTE + "?",
                 params={"efficiency": efficiency, "range": range, "from": source, "to": dest, 'supercharge_multiplier': supercharge_mult},
                 headers={'User-Agent': Context.plugin_useragent})
 
@@ -234,30 +159,25 @@ class Router():
                 response:dict = json.loads(results.content)
                 job:str = response["job"]
 
-                results_url:str = "https://spansh.co.uk/api/results/" + job
+                results_url:str = f"{SPANSH_RESULTS}/{job}"
                 route_response:Response = requests.get(results_url, timeout=5)
                 if route_response.status_code != 202:
                     break
                 tries += 1
                 sleep(1)
 
-            if not route_response:
-                Debug.logger.error("Query to Spansh timed out")
-                Context.ui.show_error("The query to Spansh was too long and timed out, please try again.")
-
-            if route_response.status_code != 200:
+            if not route_response or route_response.status_code != 200:
                 self.plot_error(route_response)
                 return False
 
             route:dict = json.loads(route_response.content)["result"]["system_jumps"]
 
-            clist:list = list(route[0].keys())
             cols:list = []
             hdrs:list = []
             for h in HEADERS:
-                if HDRMAP.get(h, '') in route[0].keys():
+                if HEADER_MAP.get(h, '') in route[0].keys():
                     hdrs.append(h)
-                    cols.append(HDRMAP.get(h, ''))
+                    cols.append(HEADER_MAP.get(h, ''))
 
             Debug.logger.debug(f"Cols: {cols} hdrs: {hdrs}")
             rte:list = []
@@ -278,31 +198,30 @@ class Router():
             self.offset = 1 if self.route[0][self._syscol()] == self.system else 0
             self.jumps_left = sum([j[cols.index('jumps')] for j in self.route]) if 'Jumps' in hdrs else 0
             self.next_stop = self.route[self.offset][self._syscol()]
-            Context.ui.update_display(True)
             self.save()
             return True
 
         except Exception as e:
             Debug.logger.error("Failed to plot route, exception info:", exc_info=e)
-            Context.ui.enable_plot_gui(True)
+            Context.ui.enable_plot_gui(True) # Return to the plot gui
             Context.ui.show_error(lbls["plot_error"])
         Debug.logger.debug(f"Done")
         return False
 
 
     def plot_error(self, response:Response) -> None:
-        Debug.logger.error(f"Failed to query plotted route from Spansh (response code {response.status_code}): {response.text}")
-        Context.ui.enable_plot_gui(True)
-        failure:dict = json.loads(response.content)
+        """ Parse the response from Spansh on a failed route query """
 
-        if response.status_code == 400 and "error" in failure:
-            Context.ui.show_error(failure["error"])
-            #if "starting system" in failure["error"]:
-            #    Context.ui.source_ac["fg"] = "red"
-            #if "finishing system" in failure["error"]:
-            #    Context.ui.dest_ac["fg"] = "red"
+        err:str = ""
+        if response and response.status_code == 400 and "error" in json.loads(response.content):
+            err = json.loads(response.content)["error"]
+        elif response:
+            err = lbls["plot_error"]
         else:
-            Context.ui.show_error(lbls["plot_error"])
+            err = lbls["no_response"]
+
+        Context.ui.enable_plot_gui(True)
+        Context.ui.show_error(err)
         return
 
 
@@ -333,107 +252,13 @@ class Router():
 
 
     def clear_route(self) -> None:
+        """ Clear the current route"""
         self.offset = 0
         self.headers = []
         self.route = []
         self.next_stop:str = ""
         self.jumps_left = 0
-        self.roadtoriches = False
-        self.fleetcarrier = False
         self.save()
-
-
-    def export_route(self) -> None:
-        """ Export the route as a csv """
-
-        if self.route == [] or self.headers == []:
-            Debug.logger.debug(f"No route")
-            return
-
-        route_start:str = self.route[0][0]
-        route_end:str = self.route[-1][0]
-        route_name:str = f"{route_start} to {route_end}"
-        ftypes:list = [('CSV files', '*.csv')]
-        filename:str = filedialog.asksaveasfilename(filetypes=ftypes, initialdir=os.path.expanduser('~'), initialfile=f"{route_name}.csv")
-
-        if len(filename) == 0:
-            Debug.logger.debug(f"No filename selected")
-            return
-
-        with open(filename, 'w', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerow(self.headers)
-            for row in self.route:
-                writer.writerow(row)
-
-
-    def update_bodies_text(self) -> None:
-        if not self.roadtoriches:
-            return
-
-        # For the bodies to scan use the current system, which is one before the next stop
-        lastsystemoffset:int = self.offset - 1
-        if lastsystemoffset < 0:
-            lastsystemoffset = 0    # Display bodies of the first system
-
-        lastsystem:str = self.route[lastsystemoffset][0]
-        bodynames:str = self.route[lastsystemoffset][2]
-        bodysubtypes:str = self.route[lastsystemoffset][3]
-
-        waterbodies:list = []
-        rockybodies:list = []
-        metalbodies:list = []
-        earthlikebodies:list = []
-        unknownbodies:list = []
-
-        for num, name in enumerate(bodysubtypes):
-            shortbodyname:str = bodynames[num].replace(lastsystem + " ", "")
-            if name.lower() == "high metal content world":
-                metalbodies.append(shortbodyname)
-            elif name.lower() == "rocky body":
-                rockybodies.append(shortbodyname)
-            elif name.lower() == "earth-like world":
-                earthlikebodies.append(shortbodyname)
-            elif name.lower() == "water world":
-                waterbodies.append(shortbodyname)
-            else:
-                unknownbodies.append(shortbodyname)
-
-        bodysubtypeandname:str = ""
-        if len(metalbodies) > 0:
-            bodysubtypeandname += "\n   Metal: " + ', '.join(metalbodies)
-        if len(rockybodies) > 0:
-            bodysubtypeandname += "\n   Rocky: " + ', '.join(rockybodies)
-        if len(earthlikebodies) > 0:
-            bodysubtypeandname += "\n   Earth: " + ', '.join(earthlikebodies)
-        if len(waterbodies) > 0:
-            bodysubtypeandname += "\n   Water: " + ', '.join(waterbodies)
-        if len(unknownbodies) > 0:
-            bodysubtypeandname += "\n   Unknown: " + ', '.join(unknownbodies)
-
-        self.bodies = f"\n{lastsystem}:{bodysubtypeandname}"
-
-
-    def check_for_update(self) -> None:
-        return
-        version_url = "https://raw.githubusercontent.com/rinkulu/EDMC-SpanshRouterRE/master/version"
-        try:
-            response = requests.get(version_url, timeout=2)
-            if response.status_code == 200:
-                if Context.plugin_version != Version(response.text):
-                    self.update_available = True
-                    self.spansh_updater = Updater(response.text, Context.plugin_dir)
-            else:
-                Debug.logger.error(
-                    f"Could not query latest SpanshRouterRE version (status code {response.status_code}): "
-                    + response.text
-                )
-        except Exception as e:
-            Debug.logger.error("Failed to check for updates, exception info:", exc_info=e)
-
-    def install_update(self) -> None:
-        return
-        self.spansh_updater.install()
 
 
     @catch_exceptions
