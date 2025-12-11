@@ -15,8 +15,10 @@ from semantic_version import Version # type: ignore
 from time import sleep
 from typing import TYPE_CHECKING
 
+from utils.Debug import Debug, catch_exceptions
+
 from .strings import hdrs, lbls
-from .context import Context, Debug, catch_exceptions
+from .context import Context
 
 DATA_DIR = 'data'
 # Map from returned data to our header names

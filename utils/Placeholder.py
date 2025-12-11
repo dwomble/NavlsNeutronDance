@@ -1,7 +1,8 @@
 import tkinter as tk
 from functools import partial
 from config import config  # type: ignore
-from Router.context import Debug, catch_exceptions
+
+from utils.Debug import Debug, catch_exceptions
 
 class Placeholder(tk.Entry):
     """
@@ -75,6 +76,7 @@ class Placeholder(tk.Entry):
             self['fg'] = "red"
         else:
             self.set_default_style()
+
     @catch_exceptions
     def focus_in(self, e, *args) -> None:
         if self['fg'] == "red" or self['fg'] == self.placeholder_color:

@@ -7,7 +7,8 @@ from semantic_version import Version #type: ignore
 
 from config import appname  # type: ignore
 
-from Router.context import Context, Debug, catch_exceptions
+from utils.Debug import Debug, catch_exceptions
+from Router.context import Context
 from Router.router import Router
 from Router.ui import UI
 

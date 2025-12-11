@@ -6,8 +6,10 @@ import tkinter as tk
 
 from config import config # type: ignore
 
+from utils.Debug import Debug, catch_exceptions
+from Router.context import Context
 from .Placeholder import Placeholder
-from Router.context import Context, Debug, catch_exceptions
+
 
 
 class Autocompleter(Placeholder):

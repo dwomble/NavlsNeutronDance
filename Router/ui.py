@@ -3,16 +3,17 @@ from tkinter import ttk
 import tkinter.messagebox as confirmDialog
 from typing import TYPE_CHECKING
 import re
-from functools import partial
 
 from config import appname, config # type: ignore
 
 from utils.Tooltip import ToolTip
 from utils.Autocompleter import Autocompleter
 from utils.Placeholder import Placeholder
+from utils.Debug import Debug, catch_exceptions
 from .strings import lbls, btns, tts
 
-from .context import Context, Debug, catch_exceptions
+from .context import Context
+
 class UI():
     # Singleton pattern
     _instance = None
@@ -354,8 +355,9 @@ class UI():
         if not re.match(r"^\d+(\.\d+)?$", value):
             Debug.logger.debug(f"Invalid range entry {value}")
             self.range_entry.set_error_style()
-            return
+        return
 
+        # We aren't doing this.
         ship:str = str(Context.router.ship)
         if ship not in Context.router.ships:
             Debug.logger.debug(f"No ship selected or ship {Context.router.ship} not in ships list")
