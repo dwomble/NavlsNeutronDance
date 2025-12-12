@@ -1,5 +1,5 @@
 import json
-from os import path
+from os import path, makedirs
 import re
 import requests
 from requests import Response
@@ -305,7 +305,9 @@ class Router():
         ''' Save state to file '''
 
         ind:int = 4
+        makedirs(path.join(Context.plugin_dir, DATA_DIR), exist_ok=True)
         file:str = path.join(Context.plugin_dir, DATA_DIR, 'route.json')
+
         with open(file, 'w') as outfile:
             json.dump(self._as_dict(), outfile, indent=ind)
 
