@@ -43,11 +43,9 @@ class Autocompleter(Placeholder):
 
         self.bind("<Any-Key>", self.keypressed)
         self.lb.bind("<Any-Key>", self.keypressed)
-        self.bind('<Control-KeyRelease-a>', self.select_all)
         self.lb.bind("<ButtonRelease-1>", self.selection)
         self.bind("<FocusOut>", self.ac_focus_out)
         self.lb.bind("<FocusOut>", self.ac_focus_out)
-        self.bind("<FocusIn>", self.select_all)
         self.update_me()
 
     def ac_focus_out(self, event=None) -> None:
@@ -69,8 +67,6 @@ class Autocompleter(Placeholder):
         elif key in ['Escape', 'Tab', 'ISO_Left_Tab'] and self.lb_up:
             self.hide_list()
 
-    def select_all(self, event) -> None:
-        event.widget.event_generate('<<SelectAll>>')
 
     @catch_exceptions
     def changed(self, name=None, index=None, mode=None) -> None:
