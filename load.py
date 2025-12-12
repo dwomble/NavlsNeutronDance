@@ -55,8 +55,12 @@ def journal_entry(cmdr:str, is_beta:bool, system:str, station:str, entry:dict, s
         Context.router.update_route()
 
     match entry['event']:
+        case 'StoredShips':
+            Context.router.shipyard = entry.get('ShipsHere', []) + entry.get('ShipsRemote', [])
         case 'Loadout':
             Context.router.set_ship(entry.get('ShipID', ''), entry.get('MaxJumpRange', 0.0), entry.get('ShipName', ''), entry.get('Ship', ''))
+        case 'ShipyardSwap':
+            Context.router.swap_ship(entry.get('ShipID', ''))
 
 
 @catch_exceptions

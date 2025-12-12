@@ -47,14 +47,36 @@ class Router():
         self.next_stop:str = ""
         self.jumps:int = 0
 
+        self.shipyard:list = [] # Temporary store of shipyard ships
+
         self._load()
         self._initialized = True
 
 
+    def swap_ship(self, ship_id:str) -> None:
+        self.ship_id = str(ship_id)
+
+        if ship_id in self.ships:
+            self.range = self.ships[ship_id].get('range', 32.0)
+            self.supercharge_mult = 6 if self.ships[ship_id].get('type', '') in ('explorer_nx') else 4
+            self.ship = self.ships[ship_id]
+            return
+
+        found_ship:dict = next((item for item in self.shipyard if item.get('ship_id', '') == self.ship_id), {})
+        if found_ship != {}:
+            self.range = found_ship.get('max_jump_range', 32.0) * 0.95
+            self.supercharge_mult = 6 if found_ship.get('type', '') in ('explorer_nx') else 4
+            self.ship = {'name': found_ship.get('name', ''), 'range': self.range, 'type': found_ship.get('type', '')}
+            return
+
+        self.range = 32.0
+        self.supercharge_mult = 4
+        self.ship = {'name': '', 'range': 32.0, 'type': ''}
+        return
+
     def set_ship(self, ship_id:str, range:float, name:str, type:str) -> None:
         """ Set the current ship details"""
         Debug.logger.debug(f"Setting current ship to {ship_id} {name} {type}")
-        self.ship_id = str(ship_id)
 
         self.range = round(float(range) * 0.95, 2)
         self.supercharge_mult = 6 if type in ('explorer_nx') else 4
