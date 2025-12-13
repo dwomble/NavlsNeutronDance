@@ -5,6 +5,7 @@ from tkinter import ttk
 import tkinter.messagebox as confirmDialog
 from functools import partial
 import re
+import webbrowser
 
 from config import config # type: ignore
 
@@ -12,7 +13,7 @@ from utils.Tooltip import ToolTip
 from utils.Autocompleter import Autocompleter
 from utils.Placeholder import Placeholder
 from utils.Debug import Debug, catch_exceptions
-from .constants import lbls, btns, tts, errs
+from .constants import lbls, btns, tts, errs, GIT_LATEST
 
 from .context import Context
 
@@ -50,8 +51,9 @@ class UI():
 
         if Context.updater and Context.updater.update_available:
             Debug.logger.debug(f"UI: Update available")
+            Context.updater.install_update = False # We aren't doing auto installs right now
             text:str = lbls['update_available'].format(v=str(Context.updater.update_version).replace("-", ""))
-            self.update = tk.Label(self.frame, text=text, justify=tk.CENTER, anchor=tk.W, font=("Helvetica", 9, "normal"), cursor='hand2')
+            self.update = tk.Label(self.frame, text=text, anchor=tk.NW, font=("Helvetica", 9, "normal"), cursor='hand2')
             self.update.bind("<Button-1>", partial(self.cancel_update))
             self.update.grid(row=0, column=0, columnspan=2)
 
@@ -68,6 +70,7 @@ class UI():
     def cancel_update(self, tkEvent = None) -> None:
         """ Cancel the update if they click """
         Debug.logger.debug(f"Cancelling update, destroying frame")
+        webbrowser.open(GIT_LATEST)
         Context.updater.install_update = False
         self.update.destroy()
 

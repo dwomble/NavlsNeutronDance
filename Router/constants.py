@@ -2,6 +2,7 @@ NAME="Navl's Neutron Dancer"
 
 GIT_USER="dwomble"
 GIT_PROJECT="EDMC-NeutronDancer"
+GIT_LATEST:str = f"https://github.com/{GIT_USER}/{GIT_PROJECT}/releases/latest"
 GIT_DOWNLOAD:str = f"https://github.com/{GIT_USER}/{GIT_PROJECT}/releases/download"
 GIT_VERSION:str = f"https://raw.githubusercontent.com/{GIT_USER}/{GIT_PROJECT}/master/version"
 GIT_CHANGELOG_LIST:str = f"https://api.github.com/repos/{GIT_USER}/{GIT_PROJECT}/releases/latest"
@@ -47,7 +48,8 @@ lbls:dict = {
     "overcharge_supercharge": "Overcharge (x6)",
     "clear_route_yesno": "Are you sure you want to clear the current route?",
     "route_complete": "End of the road!",
-    "update_available": "Version {v}  will be installed on exit.\nClick here to cancel.",
+    #"update_available": "Version {v} will be installed on exit. Click to cancel.",
+    "update_available": "New version available: {v}",
     "jump": "jump",
     "jumps": "jumps"
 }
