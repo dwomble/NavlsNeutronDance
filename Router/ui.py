@@ -42,32 +42,34 @@ class UI():
         self.parent:tk.Widget|None = parent
         self.window_route:RouteWindow = RouteWindow(self.parent.winfo_toplevel())
         self.frame:tk.Frame = tk.Frame(parent, borderwidth=2)
-        self.frame.pack(fill=tk.BOTH, expand=True, anchor=tk.CENTER)
+        self.frame.pack(fill=tk.BOTH, expand=True, anchor=tk.W)
         self.title_fr = None
         self.route_fr = None
         self.plot_fr = None
-
-        self.error_lbl = self._label(self.frame, textvariable=self.error_txt)
-        self.error_lbl.pack()
-
-        self.hide_error()
-        if Context.router.route == []: # We don't have a route so show the plot UI
-            self.show_frame('Default')
-            return
-
-        self.show_frame('Route')
+        self.update:tk.Label|None = None
 
         if Context.updater and Context.updater.update_available:
-            update:tk.Label = tk.Label(self.frame, text=lbls["update_available"], justify=tk.CENTER, anchor=tk.CENTER, font=("Helvetica", 9, "bold"))
-            update.bind("<Button-1>", partial(self.cancel_update))
-            update.pack(anchor=tk.S)
+            Debug.logger.debug(f"UI: Update available")
+            text:str = lbls['update_available'].format(v=str(Context.updater.update_version).replace("-", ""))
+            self.update = tk.Label(self.frame, text=text, justify=tk.CENTER, anchor=tk.W, font=("Helvetica", 9, "normal"), cursor='hand2')
+            self.update.bind("<Button-1>", partial(self.cancel_update))
+            self.update.grid(row=0, column=0, columnspan=2)
+
+        self.error_lbl:tk.Label|ttk.Label = self._label(self.frame, textvariable=self.error_txt)
+        self.error_lbl.grid(row=1, column=0, columnspan=2)
+
+        self.hide_error()
+        self.show_frame('Route' if Context.router.route != [] else 'Default')
 
         self._initialized = True
 
 
+    @catch_exceptions
     def cancel_update(self, tkEvent = None) -> None:
         """ Cancel the update if they click """
-        Context.updater.update_available = False
+        Debug.logger.debug(f"Cancelling update, destroying frame")
+        Context.updater.install_update = False
+        self.update.destroy()
 
 
     def show_frame(self, which:str = 'Default'):
@@ -106,7 +108,7 @@ class UI():
         """ Create the base/title frame """
         title_fr:tk.Frame = tk.Frame(self.frame)
         if config.get_int('theme') == 1: title_fr.config(bg='black')
-        title_fr.grid(row=0, column=0)
+        title_fr.grid(row=2, column=0)
         col:int = 0; row:int = 0
         self.lbl = self._label(title_fr, text=lbls["plot_title"], font=("Helvetica", 9, "bold"))
         self.lbl.grid(row=row, column=col, padx=(0,5), pady=5)
@@ -122,7 +124,7 @@ class UI():
         Debug.logger.debug(f"Creating plot frame")
         plot_fr:tk.Frame = tk.Frame(self.frame)
         if config.get_int('theme') == 1: plot_fr.config(bg='black')
-        row:int = 0
+        row:int = 2
         col:int = 0
 
         # Define the popup menu additions
@@ -215,7 +217,7 @@ class UI():
         fr1.grid_columnconfigure(2, weight=0)
         fr1.grid_columnconfigure(3, weight=0)
         fr1.grid(row=0, column=0, sticky=tk.W)
-        row:int = 0
+        row:int = 2
         col:int = 0
         self.waypoint_prev_btn = self._button(fr1, text=btns["prev"], width=3, command=lambda: Context.router.goto_prev_waypoint())
         self.waypoint_prev_btn.grid(row=row, column=col, padx=5, pady=5, sticky=tk.W)
@@ -349,11 +351,11 @@ class UI():
         """ Set and show the error text """
         if error != None:
             self.error_txt.set(error)
-        self.error_lbl.pack()
+        self.error_lbl.grid()
 
 
     def hide_error(self) -> None:
-        self.error_lbl.pack_forget()
+        self.error_lbl.grid_remove()
 
 
     def enable_plot_gui(self, enable:bool) -> None:

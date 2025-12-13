@@ -18,10 +18,8 @@ if TYPE_CHECKING:
 class Context:
     # plugin parameters
     plugin_name:str = os.path.basename(os.path.dirname(__file__))
-    plugin_version:Version = None
     plugin_dir:Path = None
     plugin_useragent:str = None
-    plugin_changelogs:str = None
 
     # global objects
     router:'Router' = None

@@ -47,11 +47,7 @@ lbls:dict = {
     "overcharge_supercharge": "Overcharge (x6)",
     "clear_route_yesno": "Are you sure you want to clear the current route?",
     "route_complete": "End of the road!",
-    "update_available": "Update available!",
-    "install_instructions": "If you choose to install it, you will have to restart EDMC for it to take effect.",
-    "install": "Install?",
-    "update_confirm": "The update will be installed when you quit EDMC.",
-    "update_available": "Update will be installed on restart, click to cancel",
+    "update_available": "Version {v}  will be installed on exit.\nClick here to cancel.",
     "jump": "jump",
     "jumps": "jumps"
 }

@@ -21,65 +21,77 @@ class Updater():
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, version:str='', plugin_dir:str='') -> None:
+    def __init__(self, version:Version|None = None, plugin_dir:str='') -> None:
         # Only initialize if it's the first time
         if hasattr(self, '_initialized'): return
 
-        if version != '': self.version = version
-        if plugin_dir != '': self.plugin_dir = plugin_dir
+        if version != None: self.version:Version = version
+        if plugin_dir != '': self.plugin_dir:str = plugin_dir
 
         self.update_available:bool = False
+        self.install_update:bool = False
+        self.update_version:Version
 
-        self.zip_name = f"{GIT_PROJECT}-{version}.zip"
-        self.zip_path = os.path.join(self.plugin_dir, self.zip_name)
-        self.zip_downloaded = False
-        self.changelogs = self.get_changelogs()
+        self.download_url:str = ""
+        self.zip_downloaded:str = ""
 
         # Make sure we're actually initialized
-        if self.version != '' and self.plugin_dir != '':
+        if self.version != None and self.plugin_dir != '':
             self._initialized = True
 
-
-    def download_zip(self):
+    def download_zip(self) -> bool:
         """ Download the zipfile of the latest version """
-        url = f"{GIT_DOWNLOAD}/v{self.version}/{self.zip_name}"
         try:
-            r = requests.get(url)
+            r:requests.Response = requests.get(self.download_url)
+            Debug.logger.debug(f"{r}")
             r.raise_for_status()
         except Exception:
             Debug.logger.error(f"Failed to download {GIT_PROJECT} update (status code {r.status_code}).)")
-            self.zip_downloaded = False
-        else:
-            with open(self.zip_path, 'wb') as f:
-                Debug.logger.info(f"Downloading {GIT_PROJECT} to " + self.zip_path)
-                f.write(os.path.join(r.content))
-            self.zip_downloaded = True
+            return False
 
-        return self.zip_downloaded
+        zip_path:str = os.path.join(self.plugin_dir, "updates")
+        os.makedirs(zip_path, exist_ok=True)
+        zip_file:str = os.path.join(zip_path, f"{GIT_PROJECT}-{self.update_version}.zip")
+        with open(zip_file, 'wb') as f:
+            Debug.logger.info(f"Downloading {GIT_PROJECT} to " + zip_file)
+            #f.write(os.path.join(r.content))
+            for chunk in r.iter_content(chunk_size=32768):
+                f.write(chunk)
+        self.zip_downloaded = zip_file
+        return True
 
-    def install_update(self):
+    def install(self) -> None:
+        if not self.get_changelogs():
+            return
+
         if not self.download_zip():
             return
         try:
-            with zipfile.ZipFile(self.zip_path, 'r') as zip_ref:
+            Debug.logger.debug(f"Extracting zipfile to {self.plugin_dir}")
+            with zipfile.ZipFile(self.zip_downloaded, 'r') as zip_ref:
                 zip_ref.extractall(self.plugin_dir)
-            os.remove(self.zip_path)
+            #os.remove(self.zip_path)
         except Exception as e:
             Debug.logger.error("Failed to install update, exception info:", exc_info=e)
 
-
-    def get_changelogs(self) -> str:
+    def get_changelogs(self) -> bool:
         try:
-            r = requests.get(GIT_CHANGELOG_LIST, timeout=2)
+            Debug.logger.debug(f"Requesting {GIT_CHANGELOG_LIST}")
+            r:requests.Response = requests.get(GIT_CHANGELOG_LIST, timeout=2)
             r.raise_for_status()
         except requests.RequestException as e:
             Debug.logger.error("Failed to get changelog, exception info:", exc_info=e)
-            return ""
+            self.install_update = False
+            return False
 
+        Debug.logger.debug(f"{json.loads(r.content)}")
         # Get the changelog and replace all breaklines with simple ones
-        changelogs = json.loads(r.content)["body"]
-        changelogs = "\n".join(changelogs.splitlines())
-        return changelogs
+        changelogs:str = json.loads(r.content).get('body', '')
+        self.changelogs = "\n".join(changelogs.splitlines())
+        self.download_url = json.loads(r.content).get('zipball_url', '')
+        Debug.logger.debug(f"{changelogs}")
+
+        return True
 
 
     @catch_exceptions
@@ -90,14 +102,13 @@ class Updater():
             if response.status_code != 200:
                 Debug.logger.error(f"Could not query latest {GIT_PROJECT} version (status code {response.status_code}): {response.text}")
                 return
-            Debug.logger.debug(f"response {response.text}")
-            if Context.plugin_version != Version.coerce(response.text):
-                Debug.logger.debug('Update available')
-                self.update_available = True
+            Debug.logger.debug(f"response {Version.coerce(response.text)}")
+            if self.version == Version.coerce(response.text):
+                return
+            Debug.logger.debug('Update available')
+            self.update_available = True
+            self.install_update = True
+            self.update_version:Version = Version.coerce(response.text)
 
         except Exception as e:
             Debug.logger.error("Failed to check for updates, exception info:", exc_info=e)
-
-
-    def goto_changelog_page(self) -> None:
-        webbrowser.open(GIT_CHANGELOG + self.version.replace('.', ''))

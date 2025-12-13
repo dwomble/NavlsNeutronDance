@@ -19,16 +19,17 @@ from Router.ui import UI
 def plugin_start3(plugin_dir: str) -> str:
     # Debug Class
     Debug(plugin_dir)
-    Debug.logger.info(f"Starting (start3) {NAME} version {Context.plugin_version} in {appname}")
-
     Context.plugin_name = NAME
     Context.plugin_dir = Path(plugin_dir).resolve()
-    version_file = Context.plugin_dir / "version"
-    Context.plugin_version = Version(version_file.read_text())
-    Context.plugin_useragent = f"{GIT_PROJECT}-{Context.plugin_version}"
+    version_file:Path = Context.plugin_dir / "version"
+    version = Version(version_file.read_text())
+
+    Debug.logger.info(f"Starting (start3) {NAME} version {version} in {appname}")
+
+    Context.plugin_useragent = f"{GIT_PROJECT}-{version}"
 
     Debug.logger.debug(f"Calling check for update")
-    Context.updater = Updater(str(Context.plugin_version), str(Context.plugin_dir))
+    Context.updater = Updater(version, str(Context.plugin_dir))
     Context.updater.check_for_update()
 
     return NAME
@@ -40,11 +41,11 @@ def plugin_start(plugin_dir: str) -> None:
     raise EnvironmentError(errs["required_version"])
 
 
-
 @catch_exceptions
 def plugin_stop() -> None:
     Context.router.save()
-    #if Context.updater.update_available: Context.updater.install_update()
+    if Context.updater.install_update:
+        Context.updater.install()
 
 
 @catch_exceptions
@@ -62,24 +63,10 @@ def journal_entry(cmdr:str, is_beta:bool, system:str, station:str, entry:dict, s
 
 
 @catch_exceptions
-def ask_for_update() -> None:
-    if Context.updater.update_available:
-        update_txt:str = f"{lbls['update_available']}\n{lbls['install_instructions']}\n\n" + \
-                    f"{Context.plugin_changelogs}\n\n{lbls['install']}"
-        install_update:bool = confirmDialog.askyesno(GIT_PROJECT, update_txt)
-
-        if install_update:
-            confirmDialog.showinfo(GIT_PROJECT, lbls['update_confirm'])
-            Context.updater.update_available = True
-        else:
-            Context.updater.update_available = False
-
-
-@catch_exceptions
 def plugin_app(parent:tk.Widget) -> tk.Frame:
     Context.router = Router()
     Context.ui = UI(parent)
 
     Debug.logger.debug(f"Plugin_app")
-    #parent.master.after_idle(ask_for_update)
+
     return Context.ui.frame
